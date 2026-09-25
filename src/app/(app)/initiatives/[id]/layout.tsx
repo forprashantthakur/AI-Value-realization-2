@@ -5,12 +5,16 @@ import { evaluateOne } from "@/lib/services/portfolio-service";
 import { InitiativeTabs } from "@/components/initiative/tabs-nav";
 import { ConfidenceBadge, HealthBadge, StageBadge } from "@/components/value/badges";
 import { fmtMetric, money } from "@/lib/format";
+import { getSession } from "@/lib/auth/session";
+import { can } from "@/lib/auth/rbac";
+import { DeleteInitiative, InitiativeDetailsEditor } from "@/components/initiative/crud-editors";
 
 export default async function InitiativeLayout({ children, params }: { children: React.ReactNode; params: Promise<{ id: string }> }) {
   const { id } = await params;
   const r = await evaluateOne(id);
   if (!r) notFound();
   const { portfolio: p, init, value: v } = r;
+  const session = await getSession();
   const org = p.organizations.find((o) => o.id === init.organizationId);
   const fn = p.functions.find((f) => f.id === init.functionId);
   const proc = p.processes.find((x) => x.id === init.processId);
@@ -33,6 +37,16 @@ export default async function InitiativeLayout({ children, params }: { children:
               <span className="text-xs text-muted-foreground">
                 {init.aiTechnology} · {init.agents.length} agent{init.agents.length === 1 ? "" : "s"} · Owner {init.owner}
               </span>
+            </div>
+            <div className="no-print flex flex-wrap gap-1.5 pt-1">
+              {can(session, "initiative:edit") && (
+                <InitiativeDetailsEditor
+                  key={JSON.stringify([init.code, init.name, init.description, init.stage, init.health, init.owner, init.productOwner, init.financeValidator, init.goLiveDate, init.startDate, init.processId, init.businessUnitId, init.country, init.tags, init.complexity, init.strategicAlignment, init.riskLevel, init.productiveHoursPerFte, init.costPerError, init.laborBasis, init.useCase, init.aiTechnology])}
+                  init={init}
+                  refs={{ organizations: p.organizations, businessUnits: p.businessUnits, functions: p.functions, processes: p.processes }}
+                />
+              )}
+              {can(session, "initiative:delete") && <DeleteInitiative id={init.id} code={init.code} />}
             </div>
           </div>
           <dl className="grid grid-cols-2 gap-x-6 gap-y-1 text-right text-xs sm:grid-cols-4">

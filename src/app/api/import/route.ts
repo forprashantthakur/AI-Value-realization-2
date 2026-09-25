@@ -1,13 +1,14 @@
 import { NextResponse } from "next/server";
 import { MeasurementRowSchema } from "@/lib/domain/schemas";
 import { parseTabular } from "@/lib/integrations/parse";
-import { getSession } from "@/lib/auth/session";
+import { getOptionalSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 
 /** Dry-run parse + validation of an uploaded file. The commit happens via a server action. */
 export async function POST(req: Request) {
-  const session = await getSession();
-  if (!can(session.role, "data:import")) return NextResponse.json({ error: "Your role cannot import data." }, { status: 403 });
+  const session = await getOptionalSession();
+  if (!session) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+  if (!can(session, "data:import")) return NextResponse.json({ error: "Your role cannot import data." }, { status: 403 });
   const form = await req.formData();
   const file = form.get("file");
   if (!(file instanceof File)) return NextResponse.json({ error: "No file uploaded" }, { status: 400 });

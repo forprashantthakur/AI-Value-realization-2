@@ -1,21 +1,29 @@
-import { Prisma, PrismaClient } from "@prisma/client";
-import { PrismaPg } from "@prisma/adapter-pg";
+import { Prisma } from "@prisma/client";
+import { getPrisma } from "./prisma-client";
+import { newId } from "../ids";
 import type {
   AiAgent,
   AppSettings,
+  Assumption,
   AuditEntry,
   Benchmark,
   Benefit,
+  BusinessCase,
+  BusinessUnit,
   CapacityDisposition,
   CostItem,
+  FunctionDomain,
   Industry,
   Initiative,
   KpiDefinition,
+  KpiValue,
+  LeakageNote,
   MaturityAssessment,
   MaturityDimension,
   Measurement,
   MetricSnapshot,
   ModelPrice,
+  Organization,
   Portfolio,
   ProcessMetrics,
   ProcessNode,
@@ -23,17 +31,11 @@ import type {
   RoleDefinition,
   Scenario,
   ScenarioOverrides,
+  SnapshotKind,
 } from "../domain/types";
-import { defaultSettings } from "@/demo/reference";
+import { defaultSettings } from "../catalog/starter";
 import type { InitiativePatch, ValueRepository } from "./repository";
 
-const g = globalThis as unknown as { __avpPrisma?: PrismaClient };
-/** Rust-free Prisma Client using the node-postgres driver adapter. */
-export function createPrismaClient() {
-  return new PrismaClient({ adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL! }) });
-}
-export const prisma = g.__avpPrisma ?? createPrismaClient();
-if (process.env.NODE_ENV !== "production") g.__avpPrisma = prisma;
 
 type Dec = Prisma.Decimal | number | null | undefined;
 const n = (v: Dec): number => (v === null || v === undefined ? 0 : Number(v));
@@ -307,27 +309,58 @@ function benefitData(b: Benefit) {
   };
 }
 
-/** PostgreSQL implementation (Prisma). */
+function businessCaseData(bc: BusinessCase) {
+  return {
+    approvedDate: bc.approvedDate ? new Date(bc.approvedDate) : null,
+    approvedBy: bc.approvedBy,
+    sponsor: bc.sponsor,
+    problemStatement: bc.problemStatement,
+    objectives: bc.objectives,
+    potentialAdoption: bc.potentialAdoption,
+    plannedAdoption: bc.plannedAdoption,
+    horizonYears: bc.horizonYears,
+    approvedDeclaredBenefits: bc.approvedDeclaredBenefits,
+    approvedInvestment: bc.approvedInvestment,
+  };
+}
+
+class NotInWorkspace extends Error {
+  constructor(what: string) {
+    super(`${what} not found in this workspace`);
+  }
+}
+
+/**
+ * PostgreSQL implementation (Prisma) for one workspace. Every read filters by tenantId; every write
+ * either filters by tenantId or first proves the parent initiative belongs to the tenant.
+ */
 export class PrismaRepository implements ValueRepository {
   readonly kind = "prisma" as const;
+  constructor(readonly tenantId: string) {}
+  private get db() {
+    return getPrisma();
+  }
 
   async loadPortfolio(): Promise<Portfolio> {
-    const [industries, organizations, businessUnits, functions, processes, kpis, initiatives, modelPrices, benchmarks, maturity, users, roles, settingsRow, audit] =
+    const tenantId = this.tenantId;
+    const w = { where: { tenantId } };
+    const db = this.db;
+    const [industries, organizations, businessUnits, functions, processes, kpis, initiatives, modelPrices, benchmarks, maturity, members, roles, settingsRow, audit] =
       await Promise.all([
-        prisma.industry.findMany({ include: { suggestedUseCases: { orderBy: { sortOrder: "asc" } } } }),
-        prisma.organization.findMany(),
-        prisma.businessUnit.findMany(),
-        prisma.functionDomain.findMany(),
-        prisma.process.findMany(),
-        prisma.kpiDefinition.findMany(),
-        prisma.initiative.findMany({ include: initiativeInclude, orderBy: { code: "asc" } }),
-        prisma.modelPrice.findMany(),
-        prisma.benchmark.findMany(),
-        prisma.maturityAssessment.findMany({ include: { scores: true } }),
-        prisma.user.findMany(),
-        prisma.role.findMany({ orderBy: [{ builtIn: "desc" }, { name: "asc" }] }),
-        prisma.appSetting.findUnique({ where: { key: "settings" } }),
-        prisma.auditLog.findMany({ orderBy: { at: "desc" }, take: 2000 }),
+        db.industry.findMany({ ...w, include: { suggestedUseCases: { orderBy: { sortOrder: "asc" } } }, orderBy: { name: "asc" } }),
+        db.organization.findMany({ ...w, orderBy: { name: "asc" } }),
+        db.businessUnit.findMany({ ...w, orderBy: { name: "asc" } }),
+        db.functionDomain.findMany({ ...w, orderBy: { name: "asc" } }),
+        db.process.findMany(w),
+        db.kpiDefinition.findMany({ ...w, orderBy: { name: "asc" } }),
+        db.initiative.findMany({ ...w, include: initiativeInclude, orderBy: { code: "asc" } }),
+        db.modelPrice.findMany(w),
+        db.benchmark.findMany(w),
+        db.maturityAssessment.findMany({ ...w, include: { scores: true } }),
+        db.membership.findMany({ ...w, include: { user: true } }),
+        db.role.findMany({ ...w, orderBy: [{ builtIn: "desc" }, { name: "asc" }] }),
+        db.appSetting.findUnique({ where: { tenantId_key: { tenantId, key: "settings" } } }),
+        db.auditLog.findMany({ ...w, orderBy: { at: "desc" }, take: 2000 }),
       ]);
     return {
       industries: industries.map((i) => ({
@@ -377,8 +410,8 @@ export class PrismaRepository implements ValueRepository {
           target: Object.fromEntries(m.scores.map((s) => [s.dimension, s.target])) as Record<MaturityDimension, number>,
         }),
       ),
-      users: users.map((u) => ({ id: u.id, name: u.name, email: u.email, role: u.roleId as Role, title: u.title, organizationId: u.organizationId })),
-      roles: roles.map((r): RoleDefinition => ({ id: r.id, name: r.name, description: r.description, permissions: r.permissions, builtIn: r.builtIn })),
+      users: members.map((m) => ({ id: m.userId, name: m.user.name, email: m.user.email, role: m.roleKey as Role, title: m.title, organizationId: null })),
+      roles: roles.map((r): RoleDefinition => ({ id: r.key, name: r.name, description: r.description, permissions: r.permissions, builtIn: r.builtIn })),
       settings: { ...defaultSettings, ...((settingsRow?.value as Partial<AppSettings> | undefined) ?? {}) },
       audit: audit.map((a) => ({
         id: a.id,
@@ -396,11 +429,141 @@ export class PrismaRepository implements ValueRepository {
     };
   }
 
+  // -- guards ---------------------------------------------------------------------------------
+  private async assertInitiative(id: string, tx: Prisma.TransactionClient = this.db) {
+    const c = await tx.initiative.count({ where: { id, tenantId: this.tenantId } });
+    if (!c) throw new NotInWorkspace("Initiative");
+  }
+  /** A child row (agent, cost, benefit) may be created, or updated only if it already belongs to this tenant. */
+  private async assertChild(kind: "aiAgent" | "costItem" | "benefit", id: string, initiativeId: string, tx: Prisma.TransactionClient = this.db) {
+    await this.assertInitiative(initiativeId, tx);
+    const where = { id };
+    const row =
+      kind === "aiAgent"
+        ? await tx.aiAgent.findUnique({ where, select: { initiative: { select: { tenantId: true } } } })
+        : kind === "costItem"
+          ? await tx.costItem.findUnique({ where, select: { initiative: { select: { tenantId: true } } } })
+          : await tx.benefit.findUnique({ where, select: { initiative: { select: { tenantId: true } } } });
+    if (row && row.initiative.tenantId !== this.tenantId) throw new NotInWorkspace("Record");
+  }
+  private scoped = <T extends object>(data: T) => ({ ...data, tenantId: this.tenantId });
+
+  // -- structure & reference ------------------------------------------------------------------
+  async upsertOrganization(o: Organization) {
+    const data = { name: o.name, industryId: o.industryId, headquarters: o.headquarters, currency: o.currency, isFictional: false };
+    const r = await this.db.organization.updateMany({ where: { id: o.id, tenantId: this.tenantId }, data });
+    if (!r.count) await this.db.organization.create({ data: this.scoped({ id: o.id, ...data }) });
+  }
+  async deleteOrganization(id: string) {
+    await this.db.$transaction([
+      this.db.initiative.deleteMany({ where: { organizationId: id, tenantId: this.tenantId } }),
+      this.db.organization.deleteMany({ where: { id, tenantId: this.tenantId } }),
+    ]);
+  }
+  async upsertBusinessUnit(b: BusinessUnit) {
+    const data = { organizationId: b.organizationId, name: b.name, country: b.country };
+    const r = await this.db.businessUnit.updateMany({ where: { id: b.id, tenantId: this.tenantId }, data });
+    if (!r.count) await this.db.businessUnit.create({ data: this.scoped({ id: b.id, ...data }) });
+  }
+  async deleteBusinessUnit(id: string) {
+    await this.db.businessUnit.deleteMany({ where: { id, tenantId: this.tenantId } });
+  }
+  async upsertFunction(f: FunctionDomain) {
+    const data = { name: f.name, description: f.description, isActive: f.isActive };
+    const r = await this.db.functionDomain.updateMany({ where: { id: f.id, tenantId: this.tenantId }, data });
+    if (!r.count) await this.db.functionDomain.create({ data: this.scoped({ id: f.id, ...data }) });
+  }
+  async deleteFunction(id: string) {
+    const t = this.tenantId;
+    await this.db.$transaction([
+      this.db.kpiDefinition.updateMany({ where: { functionId: id, tenantId: t }, data: { functionId: null } }),
+      this.db.benchmark.deleteMany({ where: { functionId: id, tenantId: t } }),
+      this.db.process.updateMany({ where: { functionId: id, tenantId: t }, data: { parentId: null } }),
+      this.db.process.deleteMany({ where: { functionId: id, tenantId: t } }),
+      this.db.functionDomain.deleteMany({ where: { id, tenantId: t } }),
+    ]);
+  }
+  async upsertIndustry(i: Industry) {
+    await this.db.$transaction(async (tx) => {
+      const data = { name: i.name, description: i.description, focusKpis: i.focusKpis, isCustom: i.isCustom ?? true };
+      const r = await tx.industry.updateMany({ where: { id: i.id, tenantId: this.tenantId }, data });
+      if (!r.count) await tx.industry.create({ data: this.scoped({ id: i.id, ...data }) });
+      await tx.industryUseCase.deleteMany({ where: { industryId: i.id } });
+      await tx.industryUseCase.createMany({ data: i.suggestedUseCases.map((name, sortOrder) => ({ industryId: i.id, name, sortOrder })) });
+    });
+  }
+  async deleteIndustry(id: string) {
+    await this.db.$transaction([
+      this.db.benchmark.updateMany({ where: { industryId: id, tenantId: this.tenantId }, data: { industryId: null } }),
+      this.db.industry.deleteMany({ where: { id, tenantId: this.tenantId } }),
+    ]);
+  }
+  async upsertKpi(k: KpiDefinition) {
+    const data = { functionId: k.functionId, name: k.name, unit: k.unit, direction: k.direction, description: k.description };
+    const r = await this.db.kpiDefinition.updateMany({ where: { id: k.id, tenantId: this.tenantId }, data });
+    if (!r.count) await this.db.kpiDefinition.create({ data: this.scoped({ id: k.id, ...data }) });
+  }
+  async deleteKpi(id: string) {
+    await this.db.$transaction([
+      this.db.kpiValue.deleteMany({ where: { kpiId: id, kpi: { tenantId: this.tenantId } } }),
+      this.db.kpiDefinition.deleteMany({ where: { id, tenantId: this.tenantId } }),
+    ]);
+  }
+  async upsertProcess(p: ProcessNode) {
+    const data = { functionId: p.functionId, parentId: p.parentId, level: p.level, name: p.name, automationMode: p.automationMode, description: p.description ?? null };
+    const r = await this.db.process.updateMany({ where: { id: p.id, tenantId: this.tenantId }, data });
+    if (!r.count) await this.db.process.create({ data: this.scoped({ id: p.id, ...data }) });
+  }
+  async deleteProcess(id: string) {
+    await this.db.$transaction([
+      this.db.process.updateMany({ where: { parentId: id, tenantId: this.tenantId }, data: { parentId: null } }),
+      this.db.process.deleteMany({ where: { id, tenantId: this.tenantId } }),
+    ]);
+  }
+  async upsertModelPrice(m: ModelPrice) {
+    const { id, ...data } = m;
+    const r = await this.db.modelPrice.updateMany({ where: { id, tenantId: this.tenantId }, data });
+    if (!r.count) await this.db.modelPrice.create({ data: this.scoped({ id, ...data }) });
+  }
+  async deleteModelPrice(id: string) {
+    await this.db.$transaction([
+      this.db.aiAgent.updateMany({ where: { modelPriceId: id, initiative: { tenantId: this.tenantId } }, data: { modelPriceId: null } }),
+      this.db.modelPrice.deleteMany({ where: { id, tenantId: this.tenantId } }),
+    ]);
+  }
+  async upsertBenchmark(b: Benchmark) {
+    const { id, ...rest } = b;
+    const data = { ...rest, metric: String(rest.metric), uploadedBy: rest.uploadedBy ?? null };
+    const r = await this.db.benchmark.updateMany({ where: { id, tenantId: this.tenantId }, data });
+    if (!r.count) await this.db.benchmark.create({ data: this.scoped({ id, ...data }) });
+  }
+  async deleteBenchmark(id: string) {
+    await this.db.benchmark.deleteMany({ where: { id, tenantId: this.tenantId } });
+  }
+  async saveMaturity(a: MaturityAssessment) {
+    const org = await this.db.organization.count({ where: { id: a.organizationId, tenantId: this.tenantId } });
+    if (!org) throw new NotInWorkspace("Organization");
+    await this.db.$transaction(async (tx) => {
+      await tx.maturityAssessment.deleteMany({ where: { organizationId: a.organizationId, tenantId: this.tenantId } });
+      await tx.maturityAssessment.create({
+        data: {
+          tenantId: this.tenantId,
+          organizationId: a.organizationId,
+          assessedOn: new Date(a.assessedOn),
+          assessedBy: a.assessedBy,
+          scores: { create: Object.keys(a.scores).map((d) => ({ dimension: d, score: a.scores[d as MaturityDimension], target: a.target[d as MaturityDimension] })) },
+        },
+      });
+    });
+  }
+
+  // -- initiatives ----------------------------------------------------------------------------
   async createInitiative(i: Initiative) {
-    await prisma.$transaction(async (tx) => {
+    await this.db.$transaction(async (tx) => {
       await tx.initiative.create({
         data: {
           id: i.id,
+          tenantId: this.tenantId,
           code: i.code,
           name: i.name,
           description: i.description,
@@ -425,20 +588,7 @@ export class PrismaRepository implements ValueRepository {
           costPerError: i.costPerError,
           laborBasis: i.laborBasis,
           tags: i.tags,
-          businessCase: {
-            create: {
-              approvedDate: i.businessCase.approvedDate ? new Date(i.businessCase.approvedDate) : null,
-              approvedBy: i.businessCase.approvedBy,
-              sponsor: i.businessCase.sponsor,
-              problemStatement: i.businessCase.problemStatement,
-              objectives: i.businessCase.objectives,
-              potentialAdoption: i.businessCase.potentialAdoption,
-              plannedAdoption: i.businessCase.plannedAdoption,
-              horizonYears: i.businessCase.horizonYears,
-              approvedDeclaredBenefits: i.businessCase.approvedDeclaredBenefits,
-              approvedInvestment: i.businessCase.approvedInvestment,
-            },
-          },
+          businessCase: { create: businessCaseData(i.businessCase) },
           disposition: { create: { ...i.disposition } },
           snapshots: {
             create: [i.baseline, i.target, ...(i.actual ? [i.actual] : [])].map((s) => ({
@@ -497,26 +647,47 @@ export class PrismaRepository implements ValueRepository {
   }
 
   async updateInitiative(id: string, patch: InitiativePatch) {
-    const { goLiveDate, ...rest } = patch;
-    await prisma.initiative.update({
-      where: { id },
-      data: { ...rest, ...(goLiveDate !== undefined ? { goLiveDate: goLiveDate ? new Date(goLiveDate) : null } : {}) },
+    const { goLiveDate, startDate, ...rest } = patch;
+    const r = await this.db.initiative.updateMany({
+      where: { id, tenantId: this.tenantId },
+      data: {
+        ...rest,
+        ...(goLiveDate !== undefined ? { goLiveDate: goLiveDate ? new Date(goLiveDate) : null } : {}),
+        ...(startDate ? { startDate: new Date(startDate) } : {}),
+      },
     });
+    if (!r.count) throw new NotInWorkspace("Initiative");
   }
-
+  async deleteInitiative(id: string) {
+    await this.db.$transaction([
+      this.db.auditLog.updateMany({ where: { initiativeId: id, tenantId: this.tenantId }, data: { initiativeId: null } }),
+      this.db.initiative.deleteMany({ where: { id, tenantId: this.tenantId } }),
+    ]);
+  }
+  async saveBusinessCase(initiativeId: string, bc: BusinessCase) {
+    await this.assertInitiative(initiativeId);
+    const data = businessCaseData(bc);
+    await this.db.businessCase.upsert({ where: { initiativeId }, create: { initiativeId, ...data }, update: data });
+  }
   async saveSnapshot(initiativeId: string, s: MetricSnapshot) {
+    await this.assertInitiative(initiativeId);
     const data = { asOf: new Date(s.asOf), source: s.source, owner: s.owner, ...snapshotData(s.metrics) };
-    await prisma.metricSnapshot.upsert({
+    await this.db.metricSnapshot.upsert({
       where: { initiativeId_kind: { initiativeId, kind: s.kind } },
       create: { initiativeId, kind: s.kind, ...data },
       update: data,
     });
   }
-
+  async deleteSnapshot(initiativeId: string, kind: SnapshotKind) {
+    if (kind !== "ACTUAL") throw new Error("Baseline and target snapshots cannot be deleted");
+    await this.assertInitiative(initiativeId);
+    await this.db.metricSnapshot.deleteMany({ where: { initiativeId, kind } });
+  }
   async upsertMeasurements(initiativeId: string, rows: Measurement[]) {
-    await prisma.$transaction(
+    await this.assertInitiative(initiativeId);
+    await this.db.$transaction(
       rows.map((r) =>
-        prisma.measurement.upsert({
+        this.db.measurement.upsert({
           where: { initiativeId_month: { initiativeId, month: r.month } },
           create: { initiativeId, ...measurementData(r) },
           update: measurementData(r),
@@ -524,83 +695,102 @@ export class PrismaRepository implements ValueRepository {
       ),
     );
   }
-
+  async deleteMeasurement(initiativeId: string, month: string) {
+    await this.assertInitiative(initiativeId);
+    await this.db.measurement.deleteMany({ where: { initiativeId, month } });
+  }
   async upsertAgent(agent: AiAgent) {
-    await prisma.$transaction((tx) => this.writeAgent(tx, agent));
+    await this.db.$transaction(async (tx) => {
+      await this.assertChild("aiAgent", agent.id, agent.initiativeId, tx);
+      await this.writeAgent(tx, agent);
+    });
   }
   async deleteAgent(agentId: string) {
-    await prisma.aiAgent.delete({ where: { id: agentId } });
+    await this.db.aiAgent.deleteMany({ where: { id: agentId, initiative: { tenantId: this.tenantId } } });
   }
   async upsertCost(c: CostItem) {
+    await this.assertChild("costItem", c.id, c.initiativeId);
     const data = { category: c.category, subcategory: c.subcategory, recurrence: c.recurrence, amount: c.amount, description: c.description ?? null };
-    await prisma.costItem.upsert({ where: { id: c.id }, create: { id: c.id, initiativeId: c.initiativeId, ...data }, update: data });
+    await this.db.costItem.upsert({ where: { id: c.id }, create: { id: c.id, initiativeId: c.initiativeId, ...data }, update: data });
   }
   async deleteCost(costId: string) {
-    await prisma.costItem.delete({ where: { id: costId } });
+    await this.db.costItem.deleteMany({ where: { id: costId, initiative: { tenantId: this.tenantId } } });
   }
   async saveDisposition(initiativeId: string, d: CapacityDisposition) {
-    await prisma.capacityDisposition.upsert({ where: { initiativeId }, create: { initiativeId, ...d }, update: { ...d } });
+    await this.assertInitiative(initiativeId);
+    await this.db.capacityDisposition.upsert({ where: { initiativeId }, create: { initiativeId, ...d }, update: { ...d } });
   }
   async saveBenefit(b: Benefit) {
-    await prisma.$transaction((tx) => this.writeBenefit(tx, b));
+    await this.db.$transaction(async (tx) => {
+      await this.assertChild("benefit", b.id, b.initiativeId, tx);
+      await this.writeBenefit(tx, b);
+    });
+  }
+  async deleteBenefit(benefitId: string) {
+    await this.db.benefit.deleteMany({ where: { id: benefitId, initiative: { tenantId: this.tenantId } } });
+  }
+  async saveKpiValues(initiativeId: string, values: KpiValue[]) {
+    await this.assertInitiative(initiativeId);
+    const own = await this.db.kpiDefinition.count({ where: { id: { in: values.map((v) => v.kpiId) }, tenantId: this.tenantId } });
+    if (own !== new Set(values.map((v) => v.kpiId)).size) throw new NotInWorkspace("KPI");
+    await this.db.$transaction([
+      this.db.kpiValue.deleteMany({ where: { initiativeId } }),
+      this.db.kpiValue.createMany({ data: values.map((k) => ({ initiativeId, kpiId: k.kpiId, baseline: k.baseline, target: k.target, actual: k.actual })) }),
+    ]);
+  }
+  async saveAssumptions(initiativeId: string, list: Assumption[]) {
+    await this.assertInitiative(initiativeId);
+    await this.db.$transaction([
+      this.db.assumption.deleteMany({ where: { initiativeId } }),
+      this.db.assumption.createMany({ data: list.map((a) => ({ ...a, initiativeId })) }),
+    ]);
+  }
+  async saveLeakageNotes(initiativeId: string, list: LeakageNote[]) {
+    await this.assertInitiative(initiativeId);
+    await this.db.$transaction([
+      this.db.leakageNote.deleteMany({ where: { initiativeId } }),
+      this.db.leakageNote.createMany({ data: list.map((l) => ({ ...l, initiativeId })) }),
+    ]);
   }
   async saveScenario(s: Scenario) {
+    await this.assertInitiative(s.initiativeId);
     const data = { overrides: s.overrides as Prisma.InputJsonValue, notes: s.notes };
-    await prisma.scenario.upsert({
+    await this.db.scenario.upsert({
       where: { initiativeId_name: { initiativeId: s.initiativeId, name: s.name } },
       create: { id: s.id, initiativeId: s.initiativeId, name: s.name, ...data },
       update: data,
     });
   }
+
+  // -- configuration --------------------------------------------------------------------------
   async saveSettings(s: AppSettings) {
-    await prisma.appSetting.upsert({
-      where: { key: "settings" },
-      create: { key: "settings", value: s as unknown as Prisma.InputJsonValue },
+    const tenantId = this.tenantId;
+    await this.db.appSetting.upsert({
+      where: { tenantId_key: { tenantId, key: "settings" } },
+      create: { tenantId, key: "settings", value: s as unknown as Prisma.InputJsonValue },
       update: { value: s as unknown as Prisma.InputJsonValue },
     });
   }
-  async upsertModelPrice(m: ModelPrice) {
-    const { id, ...data } = m;
-    await prisma.modelPrice.upsert({ where: { id }, create: m, update: data });
-  }
-  async upsertBenchmark(b: Benchmark) {
-    const { id, ...data } = b;
-    const d = { ...data, metric: String(data.metric), uploadedBy: data.uploadedBy ?? null };
-    await prisma.benchmark.upsert({ where: { id }, create: { id, ...d }, update: d });
-  }
-  async upsertIndustry(i: Industry) {
-    await prisma.$transaction(async (tx) => {
-      const data = { name: i.name, description: i.description, focusKpis: i.focusKpis, isCustom: i.isCustom ?? true };
-      await tx.industry.upsert({ where: { id: i.id }, create: { id: i.id, ...data }, update: data });
-      await tx.industryUseCase.deleteMany({ where: { industryId: i.id } });
-      await tx.industryUseCase.createMany({ data: i.suggestedUseCases.map((name, sortOrder) => ({ industryId: i.id, name, sortOrder })) });
-    });
-  }
-  async upsertKpi(k: KpiDefinition) {
-    const { id, ...data } = k;
-    await prisma.kpiDefinition.upsert({ where: { id }, create: k, update: data });
-  }
-  async upsertProcess(p: ProcessNode) {
-    const { id, ...data } = p;
-    const d = { ...data, description: data.description ?? null };
-    await prisma.process.upsert({ where: { id }, create: { id, ...d }, update: d });
-  }
   async upsertRole(r: RoleDefinition) {
+    const tenantId = this.tenantId;
     const data = { name: r.name, description: r.description, permissions: r.permissions, builtIn: r.builtIn };
-    await prisma.role.upsert({ where: { id: r.id }, create: { id: r.id, ...data }, update: data });
+    await this.db.role.upsert({ where: { tenantId_key: { tenantId, key: r.id } }, create: { id: newId("role"), tenantId, key: r.id, ...data }, update: data });
   }
-  async deleteRole(roleId: string, reassignTo: string) {
-    await prisma.$transaction([prisma.user.updateMany({ where: { roleId }, data: { roleId: reassignTo } }), prisma.role.delete({ where: { id: roleId } })]);
-  }
-  async setUserRole(userId: string, role: string) {
-    await prisma.user.update({ where: { id: userId }, data: { roleId: role } });
+  async deleteRole(roleKey: string, reassignTo: string) {
+    const tenantId = this.tenantId;
+    await this.db.$transaction([
+      this.db.membership.updateMany({ where: { tenantId, roleKey }, data: { roleKey: reassignTo } }),
+      this.db.invitation.updateMany({ where: { tenantId, roleKey }, data: { roleKey: reassignTo } }),
+      this.db.role.deleteMany({ where: { tenantId, key: roleKey } }),
+    ]);
   }
   async appendAudit(entries: AuditEntry[]) {
-    await prisma.auditLog.createMany({
+    await this.db.auditLog.createMany({
       data: entries.map((e) => ({
         id: e.id,
+        tenantId: this.tenantId,
         at: new Date(e.at),
-        userId: e.userId && e.userId !== "seed" && e.userId !== "system" ? e.userId : null,
+        userId: e.userId && e.userId !== "system" && e.userId !== "api" ? e.userId : null,
         userName: e.userName,
         entity: e.entity,
         entityId: e.entityId,

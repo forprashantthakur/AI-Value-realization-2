@@ -37,10 +37,9 @@ export interface ReportModel {
 }
 
 const DISCLAIMER = [
-  "All organizations and figures in this demo are fictional.",
   "Benefits are AI-attributed annual run-rates. Only finance-validated value should be quoted as P&L impact; estimated and intangible value is shown separately.",
   "Capacity released is not cash: only the share declared cashable or cost-avoidance is financial.",
-  "Benchmarks and model prices marked illustrative are placeholders, not market data.",
+  "Benchmarks and model prices marked illustrative or placeholder are not market data.",
 ];
 
 function execNarrative(s: PortfolioSummary, items: EvaluatedInitiative[], horizon: number): string[] {

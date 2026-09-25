@@ -1,4 +1,7 @@
 import Link from "next/link";
+import { NoInitiatives } from "@/components/value/no-initiatives";
+import { getSession } from "@/lib/auth/session";
+import { can } from "@/lib/auth/rbac";
 import { evaluatePortfolio } from "@/lib/services/portfolio-service";
 import { VS_HEX } from "@/lib/services/view-models";
 import { monthLabel, money, num, pct } from "@/lib/format";
@@ -12,7 +15,8 @@ export const metadata = { title: "Measurements" };
 export default async function MeasurementsPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const sp = await searchParams;
   const { portfolio: p, items } = await evaluatePortfolio({});
-  const e = items.find((x) => x.init.id === (sp.initiative ?? "ini-s2p")) ?? items[0];
+  if (!p.initiatives.length) return <NoInitiatives title="Measurements" description="Monthly post-AI measurements per initiative." canCreate={can(await getSession(), "initiative:edit")} />;
+  const e = items.find((x) => x.init.id === sp.initiative) ?? items[0];
   const pts = e.value.monthly.map((m) => ({
     month: monthLabel(m.month),
     raw: m.month,

@@ -1,4 +1,7 @@
 import Link from "next/link";
+import { NoInitiatives } from "@/components/value/no-initiatives";
+import { getSession } from "@/lib/auth/session";
+import { can } from "@/lib/auth/rbac";
 import { FileSpreadsheet, FileText, Sheet } from "lucide-react";
 import { REPORT_META, type ReportType } from "@/lib/reporting/builders";
 import { loadPortfolio } from "@/lib/services/portfolio-service";
@@ -10,8 +13,9 @@ export const metadata = { title: "Reports" };
 export default async function ReportsPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const sp = await searchParams;
   const p = await loadPortfolio();
+  if (!p.initiatives.length) return <NoInitiatives title="Reports" description="Executive, process, CFO and portfolio reports with PDF, Excel and CSV export." canCreate={can(await getSession(), "initiative:edit")} />;
   const qs = new URLSearchParams(Object.entries(sp).filter(([, v]) => v) as [string, string][]).toString();
-  const defaultInit = sp.initiative ?? "ini-s2p";
+  const defaultInit = sp.initiative ?? p.initiatives[0]?.id ?? "";
   return (
     <div className="space-y-4">
       <PageHeader

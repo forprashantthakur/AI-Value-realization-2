@@ -47,7 +47,7 @@ src/
     reporting/            Report builders (data → report model) + CSV/Excel serializers
     advisor/              AI Value Advisor: intent router, deterministic query handlers, LLM provider interface
     auth/                 Session abstraction (signed cookie), RBAC permission matrix
-  demo/                   Fictional demo data generator (also used by prisma/seed.ts)
+  lib/catalog/            Starter catalog for new workspaces (tests/fixtures/demo holds the test portfolio)
 prisma/                   schema.prisma + seed.ts
 tests/                    Vitest unit tests (value engine, governance, advisor, import)
 ```
@@ -59,7 +59,7 @@ Dependency direction: `app → components → services → (value-engine, data, 
 `lib/data/repository.ts` defines a narrow `ValueRepository` interface (load portfolio graph, write baseline/post-AI metrics, agents, costs, benefit status, disposition, scenarios, settings, model prices, audit). Two implementations:
 
 * `PrismaRepository` — PostgreSQL via Prisma (production).
-* `MemoryRepository` — seeded from the demo generator; used automatically when `DATABASE_URL` is not set, so the app runs with zero setup.
+* `MemoryRepository` — per-workspace in-process store used when `DATABASE_URL` is not set (local development only). Every repository instance is bound to one tenant.
 
 Selection: `DATA_SOURCE=prisma|memory` (default: `prisma` if `DATABASE_URL` present).
 

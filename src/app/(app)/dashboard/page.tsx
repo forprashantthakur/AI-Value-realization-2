@@ -1,4 +1,7 @@
 import Link from "next/link";
+import { NoInitiatives } from "@/components/value/no-initiatives";
+import { getSession } from "@/lib/auth/session";
+import { can } from "@/lib/auth/rbac";
 import { AlertTriangle, ArrowRight, Info, OctagonAlert, TriangleAlert } from "lucide-react";
 import { evaluatePortfolio, filterOptions, parseFilters } from "@/lib/services/portfolio-service";
 import { buildInsights } from "@/lib/services/insights";
@@ -18,6 +21,7 @@ export const metadata = { title: "Executive Dashboard" };
 export default async function DashboardPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const filters = parseFilters(await searchParams);
   const { portfolio: p, items, summary: s } = await evaluatePortfolio(filters);
+  if (!p.initiatives.length) return <NoInitiatives title="Executive Dashboard" description="Portfolio value, ROI, adoption and leakage across all AI initiatives." canCreate={can(await getSession(), "initiative:edit")} />;
   const options = filterOptions(p);
 
   if (!items.length)

@@ -12,6 +12,7 @@ import { SnapshotEditor } from "@/components/initiative/snapshot-editor";
 import { BenefitActions } from "@/components/initiative/benefit-actions";
 import { CostEditor, DispositionEditor, ScenarioWorkbench } from "@/components/initiative/editors";
 import { AgentEditor } from "@/components/initiative/agent-editor";
+import { AssumptionsEditor, BusinessCaseEditor, DeclaredBenefitEditor, DeleteActualSnapshot, DeleteAgent, DeleteBenefit, KpiValuesEditor, LeakageNotesEditor, MeasurementEditor } from "@/components/initiative/crud-editors";
 import { SectionCard } from "@/components/value/page-header";
 import { KpiCard } from "@/components/value/kpi-card";
 import { ExplainButton } from "@/components/value/explain";
@@ -137,7 +138,7 @@ export default async function InitiativeTab({ params }: { params: Promise<{ id: 
             <KpiCard label="Business-case payback" value={fmtMetric(bcRoi.paybackMonths)} metric={bcRoi.paybackMonths} state="target" />
           </div>
           <div className="grid gap-4 lg:grid-cols-2">
-            <SectionCard title="Case for change">
+            <SectionCard title="Case for change" actions={can(session, "initiative:edit") ? <BusinessCaseEditor initiativeId={init.id} bc={init.businessCase} /> : undefined}>
               <p className="text-sm">{init.businessCase.problemStatement}</p>
               <ul className="mt-2 list-disc space-y-1 pl-5 text-sm">
                 {init.businessCase.objectives.map((o) => (
@@ -149,6 +150,7 @@ export default async function InitiativeTab({ params }: { params: Promise<{ id: 
               </p>
             </SectionCard>
             <SectionCard title="Assumptions register" description="Every assumption used in the calculations, with owner.">
+              {can(session, "initiative:edit") && <div className="mb-3"><AssumptionsEditor key={JSON.stringify(init.assumptions)} initiativeId={init.id} items={init.assumptions} owner={session.name} /></div>}
               <Table>
                 <THead>
                   <TR>
@@ -158,7 +160,7 @@ export default async function InitiativeTab({ params }: { params: Promise<{ id: 
                   </TR>
                 </THead>
                 <TBody>
-                  {init.assumptions.map((a) => (
+                  {!can(session, "initiative:edit") && init.assumptions.map((a) => (
                     <TR key={a.id}>
                       <TD>
                         <p className="font-medium">{a.label}</p>
@@ -213,7 +215,8 @@ export default async function InitiativeTab({ params }: { params: Promise<{ id: 
     }
     // -----------------------------------------------------------------------
     case "process": {
-      const root = p.processes.find((x) => x.id === init.processId)!;
+      const root = p.processes.find((x) => x.id === init.processId);
+      if (!root) return <EmptyState title="Process not found" description="The process this initiative was attached to was removed. Edit the initiative details to choose another process." />;
       const parentChain: typeof p.processes = [];
       let cur = root;
       while (cur?.parentId) {
@@ -225,15 +228,15 @@ export default async function InitiativeTab({ params }: { params: Promise<{ id: 
       const children = (pid: string, depth: number): { node: (typeof p.processes)[number]; depth: number }[] =>
         p.processes.filter((x) => x.parentId === pid).flatMap((n) => [{ node: n, depth }, ...children(n.id, depth + 1)]);
       const rows = [{ node: root, depth: 0 }, ...children(root.id, 1)];
-      const fn = p.functions.find((f) => f.id === init.functionId)!;
-      const org = p.organizations.find((o) => o.id === init.organizationId)!;
-      const bu = p.businessUnits.find((b) => b.id === init.businessUnitId)!;
-      const ind = p.industries.find((i) => i.id === org.industryId)!;
+      const fn = p.functions.find((f) => f.id === init.functionId);
+      const org = p.organizations.find((o) => o.id === init.organizationId);
+      const bu = p.businessUnits.find((b) => b.id === init.businessUnitId);
+      const ind = p.industries.find((i) => i.id === org?.industryId);
       return (
         <div className="space-y-4">
           <SectionCard title="Process hierarchy" description="Enterprise → Industry → Business Unit → Function → Process → Sub-process → Activity → Task → AI Agent">
             <p className="mb-3 flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
-              {[org.name, ind.name, bu.name, fn.name, ...parentChain.map((x) => x.name)].map((x, i) => (
+              {[org?.name, ind?.name, bu?.name, fn?.name, ...parentChain.map((x) => x.name)].filter(Boolean).map((x, i) => (
                 <span key={i}>
                   {x} <span className="mx-0.5">›</span>
                 </span>
@@ -303,15 +306,20 @@ export default async function InitiativeTab({ params }: { params: Promise<{ id: 
               baseline={init.baseline.metrics}
               productiveHours={init.productiveHoursPerFte}
               laborBasis={init.laborBasis}
-              canEdit={can(session.role, "measurement:edit")}
+              canEdit={can(session, "measurement:edit")}
               defaultOwner={init.owner}
             />
           </SectionCard>
-          {init.kpis.length > 0 && (
-            <SectionCard title="Process-specific KPIs">
-              <KpiTable init={init} kpis={p.kpis} />
-            </SectionCard>
-          )}
+          <SectionCard title="Process-specific KPIs" description="Baseline, target and post-AI values for KPIs defined in Administration.">
+            {init.kpis.length > 0 && <KpiTable init={init} kpis={p.kpis} />}
+            {can(session, "measurement:edit") ? (
+              <div className={init.kpis.length ? "mt-4 border-t pt-3" : ""}>
+                <KpiValuesEditor key={JSON.stringify(init.kpis)} initiativeId={init.id} items={init.kpis} kpis={p.kpis} />
+              </div>
+            ) : (
+              init.kpis.length === 0 && <p className="text-xs text-muted-foreground">No process-specific KPIs.</p>
+            )}
+          </SectionCard>
         </div>
       );
     }
@@ -319,7 +327,7 @@ export default async function InitiativeTab({ params }: { params: Promise<{ id: 
     case "intervention": {
       return (
         <div className="space-y-4">
-          <SectionCard title="Agentic process flow" description="Multiple agents in one workflow, in execution order." actions={can(session.role, "initiative:edit") ? <AgentEditor initiativeId={init.id} modelPrices={p.modelPrices} /> : undefined}>
+          <SectionCard title="Agentic process flow" description="Multiple agents in one workflow, in execution order." actions={can(session, "initiative:edit") ? <AgentEditor initiativeId={init.id} modelPrices={p.modelPrices} /> : undefined}>
             <AgentFlow agents={init.agents} />
           </SectionCard>
           <SectionCard title="AI intervention design">
@@ -355,11 +363,12 @@ export default async function InitiativeTab({ params }: { params: Promise<{ id: 
                     <TD className="text-xs">
                       {a.deploymentDate} <span className="text-muted-foreground">({a.status.toLowerCase()})</span>
                     </TD>
-                    <TD>{can(session.role, "initiative:edit") && <AgentEditor initiativeId={init.id} modelPrices={p.modelPrices} agent={a} />}</TD>
+                    <TD className="whitespace-nowrap">{can(session, "initiative:edit") && <><AgentEditor initiativeId={init.id} modelPrices={p.modelPrices} agent={a} /><DeleteAgent initiativeId={init.id} agentId={a.id} /></>}</TD>
                   </TR>
                 ))}
               </TBody>
             </Table>
+            {init.agents.length === 0 && <p className="py-3 text-center text-xs text-muted-foreground">No AI agents defined yet. Use “Add agent” above to describe each agent in the workflow.</p>}
             <p className="mt-2 text-xs text-muted-foreground">
               Use case: {init.useCase} · Adoption {pct(v.post.adoptionRate)} of eligible volume · {num(v.post.transactionsPerYear)} transactions / yr · {v.adoption.eligibleUsers} eligible users
             </p>
@@ -414,7 +423,11 @@ export default async function InitiativeTab({ params }: { params: Promise<{ id: 
           ) : (
             <EmptyState title="No post-AI measurement yet" description="Capture the same KPIs after go-live. Until then, all value remains forecast." />
           )}
-          <SectionCard title={init.actual ? "Update post-AI measurement" : "Capture post-AI measurement"} description="Post-AI values are blended across AI and non-AI volume at the measured adoption rate.">
+          <SectionCard
+            title={init.actual ? "Update post-AI measurement" : "Capture post-AI measurement"}
+            description="Post-AI values are blended across AI and non-AI volume at the measured adoption rate."
+            actions={init.actual && can(session, "measurement:edit") ? <DeleteActualSnapshot initiativeId={init.id} /> : undefined}
+          >
             <SnapshotEditor
               initiativeId={init.id}
               kind="ACTUAL"
@@ -422,9 +435,12 @@ export default async function InitiativeTab({ params }: { params: Promise<{ id: 
               baseline={init.baseline.metrics}
               productiveHours={init.productiveHoursPerFte}
               laborBasis={init.laborBasis}
-              canEdit={can(session.role, "measurement:edit")}
+              canEdit={can(session, "measurement:edit")}
               defaultOwner={init.owner}
             />
+          </SectionCard>
+          <SectionCard title="Monthly measurements" description="Time series that drives trends, realized value and adoption curves. Enter here, import CSV/Excel, or push via the ingestion API.">
+            <MeasurementEditor key={init.series.map((m) => m.month).join()} initiativeId={init.id} series={init.series} canEdit={can(session, "measurement:edit")} />
           </SectionCard>
           {init.kpis.length > 0 && (
             <SectionCard title="Process-specific KPIs">
@@ -436,7 +452,7 @@ export default async function InitiativeTab({ params }: { params: Promise<{ id: 
     }
     // -----------------------------------------------------------------------
     case "value": {
-      const canSubmit = can(session.role, "benefit:submit");
+      const canSubmit = can(session, "benefit:submit");
       const fin = v.benefits.filter((b) => b.benefit.financialClass !== "NON_FINANCIAL");
       const intangible = v.benefits.filter((b) => b.benefit.financialClass === "NON_FINANCIAL");
       return (
@@ -449,7 +465,16 @@ export default async function InitiativeTab({ params }: { params: Promise<{ id: 
             <KpiCard label="Redeployed capacity" value={money(v.totals.byClass.CAPACITY)} sub="economic value, not cash" />
             <KpiCard label="Measured vs estimated" value={`${money(v.totals.measured)} / ${money(v.totals.estimated)}`} sub={`${v.totals.intangibleCount} intangible line(s)`} />
           </div>
-          <SectionCard title="Benefit register" description="Measured, estimated and intangible value kept separate. Governance status gates where each line appears on the value ladder." actions={<ConfidenceBadge level={v.confidence} />}>
+          <SectionCard
+            title="Benefit register"
+            description="Measured, estimated and intangible value kept separate. Governance status gates where each line appears on the value ladder."
+            actions={
+              <div className="flex items-center gap-2">
+                {canSubmit && <DeclaredBenefitEditor initiativeId={init.id} owner={init.owner} />}
+                <ConfidenceBadge level={v.confidence} />
+              </div>
+            }
+          >
             <Table>
               <THead>
                 <TR>
@@ -510,6 +535,12 @@ export default async function InitiativeTab({ params }: { params: Promise<{ id: 
                           confidence={b.benefit.confidence}
                           canSubmit={canSubmit}
                         />
+                        {canSubmit && (
+                          <div className="mt-1 flex justify-end gap-1">
+                            {b.benefit.source.kind === "DECLARED" && b.benefit.status === "PROPOSED" && <DeclaredBenefitEditor initiativeId={init.id} owner={init.owner} benefit={b.benefit} />}
+                            {["PROPOSED", "MEASURED"].includes(b.benefit.status) && <DeleteBenefit initiativeId={init.id} benefitId={b.benefit.id} />}
+                          </div>
+                        )}
                       </TD>
                     </TR>
                   );
@@ -524,8 +555,10 @@ export default async function InitiativeTab({ params }: { params: Promise<{ id: 
                     <NatureBadge nature="INTANGIBLE" />
                     <span className="font-medium">{b.benefit.name}</span>
                     <span className="text-muted-foreground">{CATEGORY_LABEL[b.benefit.category]}</span>
-                    <span className="ml-auto">
+                    <span className="ml-auto flex items-center gap-1">
                       <StatusBadge status={b.benefit.status} />
+                      {canSubmit && b.benefit.source.kind === "DECLARED" && b.benefit.status === "PROPOSED" && <DeclaredBenefitEditor initiativeId={init.id} owner={init.owner} benefit={b.benefit} />}
+                      {canSubmit && ["PROPOSED", "MEASURED"].includes(b.benefit.status) && <DeleteBenefit initiativeId={init.id} benefitId={b.benefit.id} />}
                     </span>
                   </div>
                 ))}
@@ -540,7 +573,7 @@ export default async function InitiativeTab({ params }: { params: Promise<{ id: 
                 hoursReleased={v.capacity.hoursReleased.value}
                 productiveHours={init.productiveHoursPerFte}
                 hourlyCost={v.capacity.hourlyCost}
-                canEdit={can(session.role, "initiative:edit")}
+                canEdit={can(session, "initiative:edit")}
               />
             </SectionCard>
             <SectionCard title="Value ladder for this initiative" q="leakage" actions={<ValueStateLegend />}>
@@ -555,6 +588,14 @@ export default async function InitiativeTab({ params }: { params: Promise<{ id: 
                     </p>
                   ))}
                 </div>
+              )}
+              {can(session, "initiative:edit") && (
+                <details className="mt-3 rounded-md border p-2">
+                  <summary className="cursor-pointer text-xs font-medium">Record leakage causes</summary>
+                  <div className="mt-2">
+                    <LeakageNotesEditor key={JSON.stringify(init.leakageNotes)} initiativeId={init.id} items={init.leakageNotes} owner={session.name} />
+                  </div>
+                </details>
               )}
             </SectionCard>
           </div>
@@ -579,7 +620,7 @@ export default async function InitiativeTab({ params }: { params: Promise<{ id: 
           </div>
           <div className="grid gap-4 xl:grid-cols-[1fr_380px]">
             <SectionCard title="AI investment / TCO" description="One-time vs recurring, by category. LLM token cost is derived from agent telemetry × configured model prices.">
-              <CostEditor initiativeId={init.id} costs={init.costs} canEdit={can(session.role, "cost:edit")} />
+              <CostEditor initiativeId={init.id} costs={init.costs} canEdit={can(session, "cost:edit")} />
               {v.tco.derivedLlmAnnual > 0 && (
                 <p className="mt-2 text-xs">
                   + Derived <strong>LLM/API tokens</strong>: {money(v.tco.derivedLlmAnnual)} / yr <IllustrativeBadge text="Illustrative model prices" />
@@ -859,7 +900,7 @@ export default async function InitiativeTab({ params }: { params: Promise<{ id: 
     case "scenarios":
       return (
         <SectionCard title="Scenario analysis" description="Conservative · Expected · Aggressive. Move a slider — ROI recalculates instantly with the same engine.">
-          <ScenarioWorkbench init={init} settings={p.settings} modelPrices={p.modelPrices} canEdit={can(session.role, "scenario:edit")} />
+          <ScenarioWorkbench init={init} settings={p.settings} modelPrices={p.modelPrices} canEdit={can(session, "scenario:edit")} />
         </SectionCard>
       );
     // -----------------------------------------------------------------------
@@ -893,7 +934,7 @@ export default async function InitiativeTab({ params }: { params: Promise<{ id: 
       const entries = p.audit.filter((a) => a.initiativeId === init.id);
       return (
         <SectionCard title="Audit trail" description="Every change to measurements, costs, benefits and governance status — who, when, previous and new value.">
-          {!can(session.role, "audit:view") ? (
+          {!can(session, "audit:view") ? (
             <EmptyState title="Not permitted" description="Your role cannot view the audit trail." />
           ) : entries.length === 0 ? (
             <EmptyState title="No audit entries yet" />

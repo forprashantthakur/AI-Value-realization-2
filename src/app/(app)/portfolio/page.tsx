@@ -1,4 +1,7 @@
 import Link from "next/link";
+import { NoInitiatives } from "@/components/value/no-initiatives";
+import { getSession } from "@/lib/auth/session";
+import { can } from "@/lib/auth/rbac";
 import { Plus } from "lucide-react";
 import { evaluatePortfolio, filterOptions, parseFilters } from "@/lib/services/portfolio-service";
 import { fmtMetric, money, pct } from "@/lib/format";
@@ -22,6 +25,7 @@ export default async function PortfolioPage({ searchParams }: { searchParams: Pr
   const filters = parseFilters(sp);
   const colorBy = sp.color === "risk" ? "risk" : sp.color === "status" ? "status" : "health";
   const { portfolio: p, items } = await evaluatePortfolio(filters);
+  if (!p.initiatives.length) return <NoInitiatives title="AI Portfolio" description="Every AI initiative with its stage, value, ROI and health." canCreate={can(await getSession(), "initiative:edit")} />;
   const points: BubblePoint[] = items.map((e, i) => {
     const liveV = !!e.init.actual;
     const group =

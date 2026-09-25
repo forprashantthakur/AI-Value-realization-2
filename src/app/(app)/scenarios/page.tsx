@@ -1,4 +1,7 @@
 import Link from "next/link";
+import { NoInitiatives } from "@/components/value/no-initiatives";
+import { getSession } from "@/lib/auth/session";
+import { can } from "@/lib/auth/rbac";
 import { loadPortfolio } from "@/lib/services/portfolio-service";
 import { PageHeader, SectionCard } from "@/components/value/page-header";
 import { PortfolioScenarioLab } from "@/components/value/portfolio-scenario-lab";
@@ -7,6 +10,7 @@ export const metadata = { title: "Scenario Analysis" };
 
 export default async function ScenariosPage() {
   const p = await loadPortfolio();
+  if (!p.initiatives.length) return <NoInitiatives title="Scenario Analysis" description="Stress-test the portfolio under conservative, expected and aggressive assumptions." canCreate={can(await getSession(), "initiative:edit")} />;
   return (
     <div className="space-y-4">
       <PageHeader

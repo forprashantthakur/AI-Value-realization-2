@@ -1,9 +1,30 @@
 import type { Metric, MetricUnit } from "./value-engine/metric";
 
-const CURRENCY_SYMBOL: Record<string, string> = { INR: "₹", USD: "$", EUR: "€", GBP: "£" };
-let symbol = "₹";
+import { cache } from "react";
+
+export const CURRENCY_SYMBOL: Record<string, string> = { INR: "₹", USD: "$", EUR: "€", GBP: "£", AED: "AED ", SGD: "S$", JPY: "¥", AUD: "A$", CAD: "C$", CHF: "CHF " };
+export const CURRENCIES = Object.keys(CURRENCY_SYMBOL);
+export const currencySymbol = (code: string) => CURRENCY_SYMBOL[code] ?? `${code} `;
+
+// Server renders keep the workspace currency in a per-request store (React cache) so concurrent
+// requests for different workspaces never share it; the browser uses the module-level fallback.
+const requestCurrency = cache((): { symbol: string | null } => ({ symbol: null }));
+let fallbackSymbol = "₹";
 export function setCurrency(code: string) {
-  symbol = CURRENCY_SYMBOL[code] ?? `${code} `;
+  const s = currencySymbol(code);
+  fallbackSymbol = s;
+  try {
+    requestCurrency().symbol = s;
+  } catch {
+    /* outside a request */
+  }
+}
+function sym() {
+  try {
+    return requestCurrency().symbol ?? fallbackSymbol;
+  } catch {
+    return fallbackSymbol;
+  }
 }
 
 /** ₹31.3M style — compact, consistent with the brief's examples. */
@@ -12,11 +33,11 @@ export function money(v: number, opts: { compact?: boolean; digits?: number } = 
   const compact = opts.compact ?? true;
   const sign = v < 0 ? "−" : "";
   const a = Math.abs(v);
-  if (!compact || a < 10_000) return `${sign}${symbol}${a.toLocaleString("en-IN", { maximumFractionDigits: a < 100 ? 2 : 0 })}`;
+  if (!compact || a < 10_000) return `${sign}${sym()}${a.toLocaleString("en-IN", { maximumFractionDigits: a < 100 ? 2 : 0 })}`;
   const d = opts.digits ?? 1;
-  if (a >= 1e9) return `${sign}${symbol}${(a / 1e9).toFixed(d)}B`;
-  if (a >= 1e6) return `${sign}${symbol}${(a / 1e6).toFixed(d)}M`;
-  return `${sign}${symbol}${(a / 1e3).toFixed(0)}K`;
+  if (a >= 1e9) return `${sign}${sym()}${(a / 1e9).toFixed(d)}B`;
+  if (a >= 1e6) return `${sign}${sym()}${(a / 1e6).toFixed(d)}M`;
+  return `${sign}${sym()}${(a / 1e3).toFixed(0)}K`;
 }
 
 export function pct(v: number, digits = 0): string {

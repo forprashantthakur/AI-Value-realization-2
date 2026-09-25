@@ -4,6 +4,7 @@ import { ROLES } from "../domain/types";
 export const PERMISSIONS = [
   "portfolio:view",
   "initiative:edit",
+  "initiative:delete",
   "measurement:edit",
   "cost:edit",
   "benefit:submit",
@@ -11,6 +12,7 @@ export const PERMISSIONS = [
   "settings:edit",
   "reference:manage",
   "users:manage",
+  "workspace:manage",
   "data:import",
   "report:export",
   "audit:view",
@@ -20,13 +22,15 @@ export type Permission = (typeof PERMISSIONS)[number];
 export const PERMISSION_LABEL: Record<Permission, string> = {
   "portfolio:view": "View portfolio, dashboards and initiatives",
   "initiative:edit": "Create and edit initiatives, agents and capacity disposition",
+  "initiative:delete": "Delete initiatives and all of their data",
   "measurement:edit": "Capture baseline and post-AI measurements",
   "cost:edit": "Edit AI investment and running costs",
   "benefit:submit": "Submit benefits, attach evidence, set attribution",
   "scenario:edit": "Save scenarios",
   "settings:edit": "Change calculation settings and the governance workflow",
   "reference:manage": "Manage industries, processes, KPIs, benchmarks and model prices",
-  "users:manage": "Manage users and roles",
+  "users:manage": "Invite and remove members, assign and define roles",
+  "workspace:manage": "Rename or delete the workspace, manage the ingestion API key",
   "data:import": "Import measurement data",
   "report:export": "Export reports",
   "audit:view": "View the audit trail",
@@ -56,7 +60,7 @@ const ROLE_DESCRIPTION: Record<BuiltInRole, string> = {
 
 export const ROLE_PERMISSIONS: Record<BuiltInRole, Permission[]> = {
   ENTERPRISE_ADMIN: [...PERMISSIONS],
-  AI_VALUE_OFFICE: ["portfolio:view", "initiative:edit", "measurement:edit", "cost:edit", "benefit:submit", "scenario:edit", "settings:edit", "reference:manage", "data:import", "report:export", "audit:view"],
+  AI_VALUE_OFFICE: ["portfolio:view", "initiative:edit", "initiative:delete", "measurement:edit", "cost:edit", "benefit:submit", "scenario:edit", "settings:edit", "reference:manage", "data:import", "report:export", "audit:view"],
   FINANCE_VALIDATOR: ["portfolio:view", "cost:edit", "scenario:edit", "report:export", "audit:view"],
   BUSINESS_OWNER: ["portfolio:view", "initiative:edit", "scenario:edit", "report:export", "audit:view"],
   PROCESS_OWNER: ["portfolio:view", "initiative:edit", "measurement:edit", "benefit:submit", "data:import", "report:export", "audit:view"],
@@ -72,25 +76,28 @@ export function builtInRoleDefinitions(): RoleDefinition[] {
   return ROLES.map((r) => ({ id: r, name: ROLE_LABEL[r], description: ROLE_DESCRIPTION[r], permissions: [...ROLE_PERMISSIONS[r]], builtIn: true }));
 }
 
-// ---------------------------------------------------------------------------
-// Runtime role registry. Roles are data (built-in + administrator-defined); the registry is refreshed
-// whenever the portfolio is loaded, so permission checks always use the latest definitions.
-// ---------------------------------------------------------------------------
-let registry: RoleDefinition[] = builtInRoleDefinitions();
+const BUILT_IN = builtInRoleDefinitions();
 
-export function setRoleRegistry(defs: RoleDefinition[]) {
-  if (defs.length) registry = defs;
-}
-export function getRoles(): RoleDefinition[] {
-  return registry;
-}
-export function roleLabel(role: Role): string {
-  return registry.find((r) => r.id === role)?.name ?? (ROLE_LABEL as Record<string, string>)[role] ?? role;
+/** Display name of a role key, resolved against the workspace's role definitions. */
+export function roleLabel(role: Role, roles: RoleDefinition[] = BUILT_IN): string {
+  return roles.find((r) => r.id === role)?.name ?? (ROLE_LABEL as Record<string, string>)[role] ?? role;
 }
 
-export function can(role: Role, permission: Permission, roles: RoleDefinition[] = registry): boolean {
-  if (role === ADMIN_ROLE) return true;
-  return roles.find((r) => r.id === role)?.permissions.includes(permission) ?? false;
+/** Anything that carries a role and its resolved permission list (e.g. the request Session). */
+export interface Principal {
+  role: Role;
+  permissions: readonly string[];
+}
+
+/**
+ * Permission check. Pass the session (preferred — permissions were resolved for the current
+ * workspace at sign-in time of the request) or a role key plus the workspace's role definitions.
+ * The administrator role is always allowed.
+ */
+export function can(who: Role | Principal, permission: Permission, roles: RoleDefinition[] = BUILT_IN): boolean {
+  if (typeof who === "object") return who.role === ADMIN_ROLE || who.permissions.includes(permission);
+  if (who === ADMIN_ROLE) return true;
+  return roles.find((r) => r.id === who)?.permissions.includes(permission) ?? false;
 }
 
 /** Governance: which status transitions a role may perform, per configurable workflow. */

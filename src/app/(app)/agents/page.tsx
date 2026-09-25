@@ -1,4 +1,7 @@
 import Link from "next/link";
+import { NoInitiatives } from "@/components/value/no-initiatives";
+import { getSession } from "@/lib/auth/session";
+import { can } from "@/lib/auth/rbac";
 import { evaluatePortfolio } from "@/lib/services/portfolio-service";
 import { VS_HEX } from "@/lib/services/view-models";
 import { MODE_LABEL } from "@/lib/domain/labels";
@@ -17,6 +20,7 @@ export const metadata = { title: "AI Agents" };
 export default async function AgentsPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const sp = await searchParams;
   const { portfolio: p, items } = await evaluatePortfolio({});
+  if (!p.initiatives.length) return <NoInitiatives title="AI Agents" description="Agent performance, token economics and cost per task." canCreate={can(await getSession(), "initiative:edit")} />;
   const rows = items.flatMap((e) =>
     e.init.agents.map((a) => ({ a, e, econ: e.value.agents.find((x) => x.agentId === a.id)! })),
   );
@@ -29,7 +33,7 @@ export default async function AgentsPage({ searchParams }: { searchParams: Promi
     .map((e) => ({ name: e.init.code, cost: e.value.tco.derivedLlmAnnual, perTxn: e.value.tco.derivedLlmAnnual / Math.max(1, e.value.post.transactionsPerYear) }))
     .filter((r) => r.cost > 0)
     .sort((a, b) => b.cost - a.cost);
-  const flowInit = items.find((e) => e.init.id === (sp.flow ?? "ini-s2p")) ?? items[0];
+  const flowInit = items.find((e) => e.init.id === sp.flow) ?? items[0];
   const sort = sp.sort ?? "tasks";
   const sorted = [...rows].sort((x, y) =>
     sort === "autonomy"

@@ -4,63 +4,68 @@ An **Enterprise AI Value Management Platform** that connects AI investment → A
 
 It follows the lifecycle **Discover → Baseline → Business Case → Implement → Measure → Validate → Realize → Optimize**, measures every process *before* and *after* AI on identical KPI definitions, attributes improvement to AI explicitly, separates capacity from cash, and lets Finance validate what becomes realized value.
 
-> All organizations and data shipped with the platform are **fictional**. Benchmarks and model prices are **illustrative placeholders** and are labelled as such everywhere.
+It is a **multi-tenant SaaS application**: people sign up, create a **workspace per client or program**, invite colleagues by link with a role, and keep each client's organizations, initiatives, measurements, members, roles and settings completely separate. Nothing ships with sample data — each new workspace starts empty, with an optional editable starter catalog (industries, a Finance / Procurement / HR process taxonomy, KPI definitions and placeholder model-price tiers).
 
 ---
 
-## 1. Quick start
+## 1. Deploy (GitHub → Vercel)
 
-### Zero-setup (in-memory demo store)
+1. **Database** — create a PostgreSQL database (Vercel → Storage → *Neon Postgres*, or Supabase / Neon / RDS). Copy its connection string.
+2. **Import the repo in Vercel** → *Add New Project* → select this GitHub repository. Framework: Next.js (auto-detected).
+3. **Environment variables** (Project → Settings → Environment Variables):
+
+   | Name | Value |
+   |---|---|
+   | `DATABASE_URL` | the PostgreSQL connection string (if Vercel Postgres added it for you, keep it) |
+   | `AUTH_SECRET` | a random string of 32+ characters (`openssl rand -base64 48`) |
+   | `ALLOW_SIGNUP` | `true` (or `false` to make it invitation-only after you've signed up) |
+
+4. **Deploy.** The build runs `vercel-build` = `prisma generate && prisma migrate deploy && next build`, which creates all tables on the first deploy.
+5. Open the site → **Create an account** → your first workspace is created and you are its Enterprise Admin. Follow the **Getting Started** checklist.
+
+## 2. Using it
+
+- **Workspaces** — one per client/program. Switch or create from the selector (top left). Administration → Workspace: rename, ingestion API key, leave, delete.
+- **Members** — Administration → Members → *Create invitation link* (email + role). Send the link; it works once and expires in 14 days. Change roles or remove members there.
+- **Roles** — 8 built-in roles plus custom roles (Administration → Roles & permissions). Permissions and the benefit-governance workflow are enforced server-side.
+- **Client structure** — Administration → Organizations (+ business units), Industries, Functions & processes, KPIs, Model prices: add, edit and delete inline.
+- **Initiatives** — AI Portfolio → *New initiative* (baseline wizard). On an initiative: *Edit details* (stage, health, owners, classification, go-live…), *Delete*, business case, assumptions, agents, costs, KPI values, post-AI snapshot, monthly measurements, declared benefits, evidence, governance, leakage notes, scenarios.
+- **Data in** — manual entry, CSV/Excel import (Data Import), or `POST /api/ingest/measurements` with the workspace API key.
+- **Maturity** — Value Realization → maturity assessment per organization.
+
+## 3. Local development
 
 ```bash
 npm install
-npm run dev            # http://localhost:3000
+cp .env.example .env.local     # set DATABASE_URL and AUTH_SECRET
+docker compose up -d           # local PostgreSQL 16 (or use your own)
+npx prisma migrate deploy
+npm run dev                    # http://localhost:3000
 ```
 
-With no `DATABASE_URL`, the app runs on an in-memory repository seeded with the demo portfolio. Changes persist until the server restarts.
+Without `DATABASE_URL` the app runs on a temporary in-memory store (shown in the header) — fine for a quick look, but data is lost on restart. Production always needs PostgreSQL.
 
-### PostgreSQL
-
-```bash
-cp .env.example .env.local           # set DATABASE_URL and AUTH_SECRET
-docker compose up -d                 # or use an existing PostgreSQL 14+
-npx prisma migrate deploy            # applies prisma/migrations/0001_init
-npm run db:seed                      # loads the fictional demo portfolio
-npm run dev
-```
-
-The header badge shows the active data source (“PostgreSQL” or “In-memory demo store”).
-
-> Locked-down networks: Prisma is configured as a **Rust-free client** (`queryCompiler` + `@prisma/adapter-pg`), so no query-engine binary is needed at runtime. If the CLI cannot download its schema engine, apply `prisma/migrations/0001_init/migration.sql` with `psql`, or set `PRISMA_SCHEMA_ENGINE=js` to use the bundled WASM schema engine (see `prisma.config.ts`).
+> Locked-down networks: Prisma is configured as a **Rust-free client** (`queryCompiler` + `@prisma/adapter-pg`). If the CLI cannot download its schema engine, apply `prisma/migrations/0001_init/migration.sql` with `psql`, or set `PRISMA_SCHEMA_ENGINE=js` (see `prisma.config.ts`).
 
 ### Quality gates
 
 ```bash
 npm run typecheck   # tsc --noEmit
-npm run lint        # eslint (next/core-web-vitals + typescript)
-npm test            # vitest — 56 tests over the value engine, governance, advisor, reporting
-npm run build       # next build
+npm run lint        # eslint
+npm test            # vitest — value engine, governance, advisor, reporting, tenancy, passwords
+npm run build
 ```
 
-### Trying roles
+### Security model
 
-Use the persona switcher (top right) to act as Enterprise Admin, AI Value Office, Finance Validator, Business Owner, Process Owner, AI Product Owner, Consultant or Viewer. Permissions and the governance workflow are enforced server-side.
-
-### Managing roles
-
-Sign in as **Enterprise Admin** (or any role with *Manage users and roles*) and open **Administration → Users & roles**:
-
-- **Add a role:** enter a name and description, optionally start from an existing role's permissions, tick permissions, click **Add role**. Custom roles get IDs like `CUSTOM_RISK_OFFICER`.
-- **Change a role:** tick or untick permissions in its row and click **Save**. Built-in roles can be adjusted; Enterprise Admin is locked to all permissions.
-- **Delete a role:** click **Delete** on a custom role, choose where its users move, confirm. The role is also removed from governance steps (a step never ends up with nobody allowed).
-- **Assign users:** change a user's role in the Users table. The last Enterprise Admin can't be demoted.
-- To let a custom role perform benefit sign-offs, tick it under **Administration → Governance workflow**.
-
-Every change is audited. With PostgreSQL, apply `prisma/migrations/0002_custom_roles` (`npx prisma migrate deploy`).
+- Email + password accounts; passwords hashed with scrypt; sessions are signed HTTP-only cookies (7 days). Membership and role are re-read on every request, so removals apply immediately.
+- Every repository is constructed for **one tenant**: reads filter by `tenantId`, writes either filter by it or prove the parent record belongs to it. Server actions additionally check every referenced id against the workspace.
+- Invitation tokens and API keys are random 256-bit secrets; only their SHA-256 hashes are stored.
+- Simple in-process sign-in throttling; add an edge rate limit / WAF for internet-facing deployments. To use SSO, replace the sign-in actions in `src/app/actions/auth.ts` — the rest of the app only calls `getSession()` / `requirePermission()`.
 
 ---
 
-## 2. Architecture
+## 4. Architecture
 
 ```
 src/
@@ -75,7 +80,7 @@ src/
     charts/                    Recharts wrappers: waterfall, bars, trend, bubble heatmap, radar
     value/ initiative/ admin/  Domain components: KPI card, Explain dialog, value tree, agent flow…
   lib/
-    value-engine/              PURE calculation library (no React, no I/O) — see §4
+    value-engine/              PURE calculation library (no React, no I/O) — see §6
     domain/                    Types, labels, Zod schemas
     data/                      Repository port + Prisma and in-memory adapters
     services/                  Portfolio evaluation, filters, insights, view-models, mutation/audit
@@ -83,8 +88,9 @@ src/
     advisor/                   Deterministic question answering + LLM narrator interface
     auth/                      Signed-cookie session abstraction + RBAC matrix
     integrations/              Connector registry, canonical import contracts, file parsing
-  demo/                        Deterministic fictional demo generator (also used by prisma/seed.ts)
-prisma/                        schema.prisma, migrations/, seed.ts
+  lib/catalog/starter.ts       Editable starter catalog provisioned into new workspaces
+  lib/identity/                Accounts, workspaces, memberships, invitations (Prisma + in-memory)
+prisma/                        schema.prisma, migrations/
 tests/                         Vitest suites
 docs/ARCHITECTURE.md           Architecture, data model and phased implementation plan
 ```
@@ -93,15 +99,15 @@ Dependency direction: `app → components → services → (value-engine, data, 
 
 ---
 
-## 3. Database
+## 5. Database
 
-Normalized PostgreSQL schema (`prisma/schema.prisma`) with entities for Organization, Industry (+ use cases), BusinessUnit, FunctionDomain, Process (self-referencing Process › Sub-process › Activity › Task with execution mode), KpiDefinition/KpiValue, Initiative, BusinessCase, MetricSnapshot (BASELINE / TARGET / ACTUAL), Measurement (monthly series), AiAgent + AgentTask + AgentPerformance, ModelPrice, CostItem, CapacityDisposition, Benefit + Evidence + BenefitValidation (governance history), Assumption, Scenario, LeakageNote, Benchmark, MaturityAssessment/Score, Role, User, GovernanceStep, AuditLog, Report, AppSetting.
+Normalized multi-tenant PostgreSQL schema (`prisma/schema.prisma`). **Tenancy & identity:** Tenant (workspace), UserAccount, Membership (role per workspace), Invitation, Role (per workspace). **Business data** (all scoped by `tenantId`): Organization, Industry (+ use cases), BusinessUnit, FunctionDomain, Process (Process › Sub-process › Activity › Task), KpiDefinition/KpiValue, Initiative, BusinessCase, MetricSnapshot (BASELINE / TARGET / ACTUAL), Measurement, AiAgent + tasks + performance, ModelPrice, CostItem, CapacityDisposition, Benefit + Evidence + BenefitValidation, Assumption, Scenario, LeakageNote, Benchmark, MaturityAssessment, AuditLog, Report, AppSetting.
 
-Money is `Decimal(18,2)`; rates are `Decimal(9,6)` fractions. **Benefits are never stored as numbers when they can be derived** — derived benefit lines store only their driver; value is recomputed from measurements on every request.
+Money is `Decimal(18,2)`; rates are `Decimal(9,6)` fractions. **Benefits are never stored as numbers when they can be derived** — derived lines store only their driver; value is recomputed from measurements on every request.
 
 ---
 
-## 4. Calculation methodology
+## 6. Calculation methodology
 
 An original, transparent framework drawing on Benefits Realization Management (benefit owners, cashable vs non-cashable, post-go-live tracking), TEI-style economics (benefits, costs, risk-adjustment — here as attribution + confidence + scenarios), TCO/FinOps unit economics, activity-based costing, value-stream/process-mining measurement, management-accounting variance analysis, the Balanced Scorecard and AI portfolio management. No proprietary framework is reproduced.
 
@@ -134,42 +140,36 @@ Every engine output is a `Metric` with `value, formula, inputs, assumptions, con
 
 **Measured vs estimated vs intangible**: a line valued from targets (no post-AI measurement) is always *Estimated*; intangible lines never carry currency; forecast-only initiatives are excluded from portfolio realized totals and labelled “forecast” everywhere.
 
-### Source-to-Pay reference case (demo `S2P-01`)
+### Worked example
 
-Baseline 500,000 transactions, 50 FTE, AHT 25 min, ₹1.5M loaded cost, 8% errors, 12% rework, 3.5-day cycle → post-AI 10 min, 3% errors, 4% rework, 1.2 days, 65% automation, 80% adoption, 75% attribution. The engine computes ≈54,400 hours released, 30.2 FTE capacity (post-AI requirement ≈19.8 FTE), cost/txn ₹150 → ≈₹79 (incl. AI run cost), and separates cashable savings from cost avoidance and redeployed capacity. It also flags that volume × effort implies ~124 FTE vs 50 reported — a baseline reconciliation warning — and uses the FTE-calibrated basis until reconciled.
+Baseline 500,000 transactions, 50 FTE, AHT 25 min, ₹1.5M loaded cost, 8% errors, 12% rework, 3.5-day cycle → post-AI 10 min, 3% errors, 4% rework, 1.2 days, 65% automation, 80% adoption, 75% attribution. The engine computes ≈54,400 hours released, 30.2 FTE capacity, cost/txn ₹150 → ≈₹79 (incl. AI run cost), and separates cashable savings from cost avoidance and redeployed capacity. It also flags that volume × effort implies ~124 FTE vs 50 reported — a baseline reconciliation warning — and uses the FTE-calibrated basis until reconciled. (This case lives in the unit-test fixtures, not in the app.)
 
----
-
-## 5. Demo data
-
-`src/demo` generates 24 fictional initiatives across 8 fictional organizations (Banking, Financial Services, Insurance, Pharma, Retail, Manufacturing, Automotive, E-commerce), 54 agents, 12–20 months of measurements each, benefit lines at every governance status, evidence, audit history, leakage notes, scenarios and maturity assessments. Only operational inputs are generated — every value shown is computed by the engine.
-
-## 6. Assumptions (defaults, all configurable in Settings)
+## 7. Assumptions (defaults, all configurable per workspace in Settings)
 
 Discount rate 10% · 3-year horizon · ROI basis “all financial” · year-1 benefit ramp 75% · 1,800 productive hours per FTE · composite score on with weights 25/15/10/10/15/10/5/10.
 
 ---
 
-## 7. Extending
+## 8. Extending
 
 | Task | How |
 |---|---|
-| **Add an industry** | Administration → Industries (or add to `src/demo/reference.ts` / seed). Methodology is shared; supply use cases, focus KPIs and benchmarks |
+| **Add an industry** | Administration → Industries. To change what new workspaces start with, edit `src/lib/catalog/starter.ts` |
 | **Add a process** | Administration → Functions & processes → pick function/domain and parent, level and execution mode. IT/Legal are pre-registered as future domains |
 | **Add a KPI** | Administration → KPIs (name, unit, direction). Values are captured per initiative (baseline/target/actual) in `KpiValue` |
 | **Add a report** | Add a `ReportType` + builder branch in `src/lib/reporting/builders.ts`. Sections (`kpis`, `text`, `bullets`, `table`, `waterfall`) render in the print view and serialise to Excel/CSV automatically |
 | **Add a connector** | Implement `ConnectorAdapter` in `src/lib/integrations/connectors.ts` returning canonical rows; they pass through the same Zod schemas as file import |
 | **Change governance** | Administration → Governance workflow (roles per step, evidence requirement) |
-| **Model prices** | Administration → Model prices. Never hard-coded; shipped tiers are illustrative |
+| **Model prices** | Administration → Model prices. Never hard-coded; starter tiers are placeholders |
 | **Plug in an LLM** | Implement `AdvisorNarrator` (`src/lib/advisor/narrator.ts`). It only receives the deterministic answer and its output is rejected if it introduces numbers not present in the facts |
-| **Authentication** | Replace `signIn` in `src/lib/auth/session.ts` with your IdP; the rest of the app only calls `getSession()` / `requirePermission()` |
+| **SSO** | Replace the actions in `src/app/actions/auth.ts` with your IdP; the rest of the app only calls `getSession()` / `requirePermission()` |
 
-## 8. API
+## 9. API
 
 - `POST /api/advisor` `{ question }` — deterministic answer with table and links.
 - `GET /api/export?report=executive|process|cfo|portfolio&format=xlsx|csv[&initiative=…][&org=…][&fn=…]`
 - `POST /api/import` (multipart `file`) — dry-run parse + validation; commit via the Import page.
 - `GET /api/import/template` — CSV template.
-- `POST /api/ingest/measurements` — bearer `INGEST_API_KEY`; `{ rows: MeasurementRow[] }`.
+- `POST /api/ingest/measurements` — `Authorization: Bearer <workspace API key>` (Administration → Workspace); `{ rows: MeasurementRow[] }` where `initiative` is the initiative code. Rows can only reach that workspace.
 
 PDF export uses the print-optimised report view (Print / Save as PDF).

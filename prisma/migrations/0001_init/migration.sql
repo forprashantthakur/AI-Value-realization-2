@@ -68,8 +68,61 @@ CREATE TYPE "MeasurementFrequency" AS ENUM ('REALTIME', 'WEEKLY', 'MONTHLY', 'QU
 CREATE TYPE "KpiDirection" AS ENUM ('LOWER_IS_BETTER', 'HIGHER_IS_BETTER');
 
 -- CreateTable
+CREATE TABLE "Tenant" (
+    "id" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "slug" TEXT NOT NULL,
+    "apiKeyHash" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "Tenant_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "UserAccount" (
+    "id" TEXT NOT NULL,
+    "email" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "passwordHash" TEXT NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "lastLoginAt" TIMESTAMP(3),
+
+    CONSTRAINT "UserAccount_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "Membership" (
+    "id" TEXT NOT NULL,
+    "tenantId" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
+    "roleKey" TEXT NOT NULL,
+    "title" TEXT NOT NULL DEFAULT '',
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "Membership_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "Invitation" (
+    "id" TEXT NOT NULL,
+    "tenantId" TEXT NOT NULL,
+    "email" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "roleKey" TEXT NOT NULL,
+    "title" TEXT NOT NULL DEFAULT '',
+    "tokenHash" TEXT NOT NULL,
+    "invitedBy" TEXT NOT NULL,
+    "expiresAt" TIMESTAMP(3) NOT NULL,
+    "acceptedAt" TIMESTAMP(3),
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "Invitation_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "Industry" (
     "id" TEXT NOT NULL,
+    "tenantId" TEXT NOT NULL,
     "name" TEXT NOT NULL,
     "description" TEXT NOT NULL,
     "isCustom" BOOLEAN NOT NULL DEFAULT false,
@@ -92,6 +145,7 @@ CREATE TABLE "IndustryUseCase" (
 -- CreateTable
 CREATE TABLE "Organization" (
     "id" TEXT NOT NULL,
+    "tenantId" TEXT NOT NULL,
     "name" TEXT NOT NULL,
     "industryId" TEXT NOT NULL,
     "headquarters" TEXT NOT NULL,
@@ -105,6 +159,7 @@ CREATE TABLE "Organization" (
 -- CreateTable
 CREATE TABLE "BusinessUnit" (
     "id" TEXT NOT NULL,
+    "tenantId" TEXT NOT NULL,
     "organizationId" TEXT NOT NULL,
     "name" TEXT NOT NULL,
     "country" TEXT NOT NULL,
@@ -115,6 +170,7 @@ CREATE TABLE "BusinessUnit" (
 -- CreateTable
 CREATE TABLE "FunctionDomain" (
     "id" TEXT NOT NULL,
+    "tenantId" TEXT NOT NULL,
     "name" TEXT NOT NULL,
     "description" TEXT NOT NULL,
     "isActive" BOOLEAN NOT NULL DEFAULT true,
@@ -125,6 +181,7 @@ CREATE TABLE "FunctionDomain" (
 -- CreateTable
 CREATE TABLE "Process" (
     "id" TEXT NOT NULL,
+    "tenantId" TEXT NOT NULL,
     "functionId" TEXT NOT NULL,
     "parentId" TEXT,
     "level" "ProcessLevel" NOT NULL,
@@ -138,6 +195,7 @@ CREATE TABLE "Process" (
 -- CreateTable
 CREATE TABLE "KpiDefinition" (
     "id" TEXT NOT NULL,
+    "tenantId" TEXT NOT NULL,
     "functionId" TEXT,
     "name" TEXT NOT NULL,
     "unit" TEXT NOT NULL,
@@ -150,6 +208,7 @@ CREATE TABLE "KpiDefinition" (
 -- CreateTable
 CREATE TABLE "Initiative" (
     "id" TEXT NOT NULL,
+    "tenantId" TEXT NOT NULL,
     "code" TEXT NOT NULL,
     "name" TEXT NOT NULL,
     "description" TEXT NOT NULL,
@@ -266,6 +325,7 @@ CREATE TABLE "Measurement" (
 -- CreateTable
 CREATE TABLE "ModelPrice" (
     "id" TEXT NOT NULL,
+    "tenantId" TEXT NOT NULL,
     "name" TEXT NOT NULL,
     "tier" TEXT NOT NULL,
     "inputPer1M" DECIMAL(18,6) NOT NULL,
@@ -443,6 +503,7 @@ CREATE TABLE "LeakageNote" (
 -- CreateTable
 CREATE TABLE "Benchmark" (
     "id" TEXT NOT NULL,
+    "tenantId" TEXT NOT NULL,
     "industryId" TEXT,
     "functionId" TEXT NOT NULL,
     "metric" TEXT NOT NULL,
@@ -460,6 +521,7 @@ CREATE TABLE "Benchmark" (
 -- CreateTable
 CREATE TABLE "MaturityAssessment" (
     "id" TEXT NOT NULL,
+    "tenantId" TEXT NOT NULL,
     "organizationId" TEXT NOT NULL,
     "assessedOn" TIMESTAMP(3) NOT NULL,
     "assessedBy" TEXT NOT NULL,
@@ -481,40 +543,20 @@ CREATE TABLE "MaturityScore" (
 -- CreateTable
 CREATE TABLE "Role" (
     "id" TEXT NOT NULL,
+    "tenantId" TEXT NOT NULL,
+    "key" TEXT NOT NULL,
     "name" TEXT NOT NULL,
+    "description" TEXT NOT NULL DEFAULT '',
+    "builtIn" BOOLEAN NOT NULL DEFAULT false,
     "permissions" TEXT[],
 
     CONSTRAINT "Role_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
-CREATE TABLE "User" (
-    "id" TEXT NOT NULL,
-    "name" TEXT NOT NULL,
-    "email" TEXT NOT NULL,
-    "title" TEXT NOT NULL,
-    "roleId" TEXT NOT NULL,
-    "organizationId" TEXT,
-
-    CONSTRAINT "User_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
-CREATE TABLE "GovernanceStep" (
-    "id" TEXT NOT NULL,
-    "from" "BenefitStatus" NOT NULL,
-    "to" "BenefitStatus" NOT NULL,
-    "allowedRoles" TEXT[],
-    "label" TEXT NOT NULL,
-    "requiresEvidence" BOOLEAN NOT NULL,
-    "sortOrder" INTEGER NOT NULL,
-
-    CONSTRAINT "GovernanceStep_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
 CREATE TABLE "AuditLog" (
     "id" TEXT NOT NULL,
+    "tenantId" TEXT NOT NULL,
     "at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "userId" TEXT,
     "userName" TEXT NOT NULL,
@@ -532,6 +574,7 @@ CREATE TABLE "AuditLog" (
 -- CreateTable
 CREATE TABLE "Report" (
     "id" TEXT NOT NULL,
+    "tenantId" TEXT NOT NULL,
     "type" TEXT NOT NULL,
     "title" TEXT NOT NULL,
     "initiativeId" TEXT,
@@ -545,24 +588,49 @@ CREATE TABLE "Report" (
 
 -- CreateTable
 CREATE TABLE "AppSetting" (
+    "tenantId" TEXT NOT NULL,
     "key" TEXT NOT NULL,
     "value" JSONB NOT NULL,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
-    CONSTRAINT "AppSetting_pkey" PRIMARY KEY ("key")
+    CONSTRAINT "AppSetting_pkey" PRIMARY KEY ("tenantId","key")
 );
 
 -- CreateIndex
-CREATE UNIQUE INDEX "Industry_name_key" ON "Industry"("name");
+CREATE UNIQUE INDEX "Tenant_slug_key" ON "Tenant"("slug");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "Tenant_apiKeyHash_key" ON "Tenant"("apiKeyHash");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "UserAccount_email_key" ON "UserAccount"("email");
+
+-- CreateIndex
+CREATE INDEX "Membership_userId_idx" ON "Membership"("userId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "Membership_tenantId_userId_key" ON "Membership"("tenantId", "userId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "Invitation_tokenHash_key" ON "Invitation"("tokenHash");
+
+-- CreateIndex
+CREATE INDEX "Invitation_tenantId_idx" ON "Invitation"("tenantId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "Industry_tenantId_name_key" ON "Industry"("tenantId", "name");
 
 -- CreateIndex
 CREATE INDEX "IndustryUseCase_industryId_idx" ON "IndustryUseCase"("industryId");
 
 -- CreateIndex
+CREATE INDEX "Organization_tenantId_idx" ON "Organization"("tenantId");
+
+-- CreateIndex
 CREATE INDEX "BusinessUnit_organizationId_idx" ON "BusinessUnit"("organizationId");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "FunctionDomain_name_key" ON "FunctionDomain"("name");
+CREATE UNIQUE INDEX "FunctionDomain_tenantId_name_key" ON "FunctionDomain"("tenantId", "name");
 
 -- CreateIndex
 CREATE INDEX "Process_functionId_idx" ON "Process"("functionId");
@@ -571,7 +639,7 @@ CREATE INDEX "Process_functionId_idx" ON "Process"("functionId");
 CREATE INDEX "Process_parentId_idx" ON "Process"("parentId");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "Initiative_code_key" ON "Initiative"("code");
+CREATE INDEX "Initiative_tenantId_idx" ON "Initiative"("tenantId");
 
 -- CreateIndex
 CREATE INDEX "Initiative_organizationId_idx" ON "Initiative"("organizationId");
@@ -581,6 +649,9 @@ CREATE INDEX "Initiative_functionId_idx" ON "Initiative"("functionId");
 
 -- CreateIndex
 CREATE INDEX "Initiative_stage_idx" ON "Initiative"("stage");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "Initiative_tenantId_code_key" ON "Initiative"("tenantId", "code");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "BusinessCase_initiativeId_key" ON "BusinessCase"("initiativeId");
@@ -616,10 +687,10 @@ CREATE INDEX "Benefit_status_idx" ON "Benefit"("status");
 CREATE UNIQUE INDEX "Scenario_initiativeId_name_key" ON "Scenario"("initiativeId", "name");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "User_email_key" ON "User"("email");
+CREATE UNIQUE INDEX "Role_tenantId_key_key" ON "Role"("tenantId", "key");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "GovernanceStep_from_to_key" ON "GovernanceStep"("from", "to");
+CREATE INDEX "AuditLog_tenantId_at_idx" ON "AuditLog"("tenantId", "at");
 
 -- CreateIndex
 CREATE INDEX "AuditLog_initiativeId_idx" ON "AuditLog"("initiativeId");
@@ -627,17 +698,38 @@ CREATE INDEX "AuditLog_initiativeId_idx" ON "AuditLog"("initiativeId");
 -- CreateIndex
 CREATE INDEX "AuditLog_entity_entityId_idx" ON "AuditLog"("entity", "entityId");
 
--- CreateIndex
-CREATE INDEX "AuditLog_at_idx" ON "AuditLog"("at");
+-- AddForeignKey
+ALTER TABLE "Membership" ADD CONSTRAINT "Membership_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Membership" ADD CONSTRAINT "Membership_userId_fkey" FOREIGN KEY ("userId") REFERENCES "UserAccount"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Invitation" ADD CONSTRAINT "Invitation_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Industry" ADD CONSTRAINT "Industry_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "IndustryUseCase" ADD CONSTRAINT "IndustryUseCase_industryId_fkey" FOREIGN KEY ("industryId") REFERENCES "Industry"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
+ALTER TABLE "Organization" ADD CONSTRAINT "Organization_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "Organization" ADD CONSTRAINT "Organization_industryId_fkey" FOREIGN KEY ("industryId") REFERENCES "Industry"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
+ALTER TABLE "BusinessUnit" ADD CONSTRAINT "BusinessUnit_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "BusinessUnit" ADD CONSTRAINT "BusinessUnit_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "FunctionDomain" ADD CONSTRAINT "FunctionDomain_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Process" ADD CONSTRAINT "Process_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Process" ADD CONSTRAINT "Process_functionId_fkey" FOREIGN KEY ("functionId") REFERENCES "FunctionDomain"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
@@ -646,10 +738,16 @@ ALTER TABLE "Process" ADD CONSTRAINT "Process_functionId_fkey" FOREIGN KEY ("fun
 ALTER TABLE "Process" ADD CONSTRAINT "Process_parentId_fkey" FOREIGN KEY ("parentId") REFERENCES "Process"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
+ALTER TABLE "KpiDefinition" ADD CONSTRAINT "KpiDefinition_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "KpiDefinition" ADD CONSTRAINT "KpiDefinition_functionId_fkey" FOREIGN KEY ("functionId") REFERENCES "FunctionDomain"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "Initiative" ADD CONSTRAINT "Initiative_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "Initiative" ADD CONSTRAINT "Initiative_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Initiative" ADD CONSTRAINT "Initiative_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Initiative" ADD CONSTRAINT "Initiative_businessUnitId_fkey" FOREIGN KEY ("businessUnitId") REFERENCES "BusinessUnit"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
@@ -674,6 +772,9 @@ ALTER TABLE "KpiValue" ADD CONSTRAINT "KpiValue_kpiId_fkey" FOREIGN KEY ("kpiId"
 
 -- AddForeignKey
 ALTER TABLE "Measurement" ADD CONSTRAINT "Measurement_initiativeId_fkey" FOREIGN KEY ("initiativeId") REFERENCES "Initiative"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "ModelPrice" ADD CONSTRAINT "ModelPrice_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "AiAgent" ADD CONSTRAINT "AiAgent_initiativeId_fkey" FOREIGN KEY ("initiativeId") REFERENCES "Initiative"("id") ON DELETE CASCADE ON UPDATE CASCADE;
@@ -712,10 +813,16 @@ ALTER TABLE "Scenario" ADD CONSTRAINT "Scenario_initiativeId_fkey" FOREIGN KEY (
 ALTER TABLE "LeakageNote" ADD CONSTRAINT "LeakageNote_initiativeId_fkey" FOREIGN KEY ("initiativeId") REFERENCES "Initiative"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
+ALTER TABLE "Benchmark" ADD CONSTRAINT "Benchmark_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "Benchmark" ADD CONSTRAINT "Benchmark_industryId_fkey" FOREIGN KEY ("industryId") REFERENCES "Industry"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Benchmark" ADD CONSTRAINT "Benchmark_functionId_fkey" FOREIGN KEY ("functionId") REFERENCES "FunctionDomain"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "MaturityAssessment" ADD CONSTRAINT "MaturityAssessment_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "MaturityAssessment" ADD CONSTRAINT "MaturityAssessment_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization"("id") ON DELETE CASCADE ON UPDATE CASCADE;
@@ -724,14 +831,17 @@ ALTER TABLE "MaturityAssessment" ADD CONSTRAINT "MaturityAssessment_organization
 ALTER TABLE "MaturityScore" ADD CONSTRAINT "MaturityScore_assessmentId_fkey" FOREIGN KEY ("assessmentId") REFERENCES "MaturityAssessment"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "User" ADD CONSTRAINT "User_roleId_fkey" FOREIGN KEY ("roleId") REFERENCES "Role"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "Role" ADD CONSTRAINT "Role_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "User" ADD CONSTRAINT "User_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "AuditLog" ADD CONSTRAINT "AuditLog_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "AuditLog" ADD CONSTRAINT "AuditLog_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "Report" ADD CONSTRAINT "Report_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Report" ADD CONSTRAINT "Report_initiativeId_fkey" FOREIGN KEY ("initiativeId") REFERENCES "Initiative"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "AppSetting" ADD CONSTRAINT "AppSetting_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 

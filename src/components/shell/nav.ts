@@ -1,4 +1,5 @@
 export const NAV = [
+  { href: "/getting-started", label: "Getting Started", icon: "Rocket" },
   { href: "/dashboard", label: "Executive Dashboard", icon: "LayoutDashboard" },
   { href: "/cockpit", label: "Value Cockpit", icon: "Gauge" },
   { href: "/portfolio", label: "AI Portfolio", icon: "Briefcase" },

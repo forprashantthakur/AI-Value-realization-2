@@ -1,4 +1,7 @@
 import Link from "next/link";
+import { NoInitiatives } from "@/components/value/no-initiatives";
+import { getSession } from "@/lib/auth/session";
+import { can } from "@/lib/auth/rbac";
 import { evaluatePortfolio, filterOptions, parseFilters } from "@/lib/services/portfolio-service";
 import { bridgeSteps, ladderWaterfall, valueBridge, VS_HEX } from "@/lib/services/view-models";
 import { LEAKAGE_CAUSE_LABEL } from "@/lib/value-engine";
@@ -19,6 +22,7 @@ export const metadata = { title: "Value Cockpit" };
 export default async function CockpitPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const filters = parseFilters(await searchParams);
   const { portfolio: p, items, summary: s } = await evaluatePortfolio(filters);
+  if (!p.initiatives.length) return <NoInitiatives title="AI Value Realization Cockpit" description="Potential → forecast → measured → validated → realized value, and where it leaks." canCreate={can(await getSession(), "initiative:edit")} />;
   const L = s.ladder;
   const forecastBC = items.filter((e) => !e.init.actual).reduce((a, e) => a + e.value.leakage.ladder.BUSINESS_CASE, 0);
   const liveBC = L.BUSINESS_CASE - forecastBC;

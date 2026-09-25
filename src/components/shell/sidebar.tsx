@@ -17,13 +17,14 @@ import {
   Upload,
   Workflow,
   Menu,
+  Rocket,
   X,
 } from "lucide-react";
 import { useState } from "react";
 import { NAV } from "./nav";
 import { cn } from "@/lib/utils";
 
-const ICONS = { Activity, Bot, Briefcase, FileSpreadsheet, FileText, Gauge, LayoutDashboard, Network, Settings, ShieldCheck, SlidersHorizontal, Target, Upload, Workflow };
+const ICONS = { Rocket, Activity, Bot, Briefcase, FileSpreadsheet, FileText, Gauge, LayoutDashboard, Network, Settings, ShieldCheck, SlidersHorizontal, Target, Upload, Workflow };
 
 function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
   const path = usePathname();
@@ -72,7 +73,7 @@ export function Sidebar() {
       <Brand />
       <NavLinks />
       <div className="mt-auto px-4 py-4 text-[10px] leading-relaxed text-sidebar-muted">
-        Demo organizations and data are fictional. Benchmarks and model prices are illustrative placeholders.
+        Starter model-price tiers are placeholders — replace them with your contracted rates in Administration.
       </div>
     </aside>
   );

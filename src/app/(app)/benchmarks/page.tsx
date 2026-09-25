@@ -1,4 +1,7 @@
 import { evaluatePortfolio } from "@/lib/services/portfolio-service";
+import { EmptyState } from "@/components/ui/misc";
+import { DeleteAction } from "@/components/ui/form-helpers";
+import { deleteBenchmarkAction } from "@/app/actions/admin";
 import { VS_HEX } from "@/lib/services/view-models";
 import type { ProcessMetrics } from "@/lib/domain/types";
 import { hoursLabel, pct } from "@/lib/format";
@@ -16,6 +19,18 @@ export default async function BenchmarksPage({ searchParams }: { searchParams: P
   const sp = await searchParams;
   const [{ portfolio: p, items }, session] = await Promise.all([evaluatePortfolio({}), getSession()]);
   const bm = p.benchmarks.find((b) => b.id === sp.bm) ?? p.benchmarks[0];
+  if (!bm)
+    return (
+      <div className="space-y-4">
+        <PageHeader eyebrow="Internal benchmark engine" title="Benchmarks" description="Compare current process, industry benchmark, top quartile, post-AI target and actual post-AI." />
+        <EmptyState title="No benchmarks in this workspace yet" description="Add validated enterprise or industry benchmarks (with their source). Bulk upload is available in Data Import." />
+        {can(session, "reference:manage") && p.functions.length > 0 && (
+          <SectionCard title="Add a benchmark">
+            <BenchmarkUpload functions={p.functions.filter((x) => x.isActive)} industries={p.industries} />
+          </SectionCard>
+        )}
+      </div>
+    );
   const key = bm.metric as keyof ProcessMetrics;
   const isPct = bm.unit === "%";
   const f = (n: number) => (isPct ? pct(n, 1) : bm.unit === "hours" ? hoursLabel(n) : `${n.toFixed(1)} ${bm.unit}`);
@@ -34,7 +49,7 @@ export default async function BenchmarksPage({ searchParams }: { searchParams: P
         eyebrow="Internal benchmark engine"
         title="Benchmarks"
         description="Compare current process, industry benchmark, top quartile, post-AI target and actual post-AI."
-        actions={<IllustrativeBadge text="Illustrative Benchmark — replace with validated enterprise or industry data." />}
+        actions={p.benchmarks.some((b) => b.isIllustrative) ? <IllustrativeBadge text="Illustrative benchmarks present — replace with validated data." /> : undefined}
       />
       <SectionCard
         title={`${bm.label} — ${p.functions.find((x) => x.id === bm.functionId)?.name}${bm.industryId ? ` · ${p.industries.find((i) => i.id === bm.industryId)?.name}` : ""}`}
@@ -103,7 +118,7 @@ export default async function BenchmarksPage({ searchParams }: { searchParams: P
         </Table>
       </SectionCard>
       <SectionCard title="Benchmark library">
-        <Table>
+        {p.benchmarks.length === 0 ? <EmptyState title="No benchmarks yet" description="Upload validated enterprise or industry benchmarks below (or in bulk via Data Import)." /> : <Table>
           <THead>
             <TR>
               <TH>Benchmark</TH>
@@ -112,6 +127,7 @@ export default async function BenchmarksPage({ searchParams }: { searchParams: P
               <TH className="text-right">Median</TH>
               <TH className="text-right">Top quartile</TH>
               <TH>Source</TH>
+              <TH />
             </TR>
           </THead>
           <TBody>
@@ -123,12 +139,13 @@ export default async function BenchmarksPage({ searchParams }: { searchParams: P
                 <TD className="text-right">{b.unit === "%" ? pct(b.median, 1) : `${b.median} ${b.unit}`}</TD>
                 <TD className="text-right">{b.unit === "%" ? pct(b.topQuartile, 1) : `${b.topQuartile} ${b.unit}`}</TD>
                 <TD className="max-w-xs text-xs">{b.isIllustrative ? <IllustrativeBadge /> : `${b.source} · ${b.uploadedBy ?? ""}`}</TD>
+                <TD className="text-right">{can(session, "reference:manage") && <DeleteAction id={b.id} action={deleteBenchmarkAction} />}</TD>
               </TR>
             ))}
           </TBody>
-        </Table>
+        </Table>}
       </SectionCard>
-      {can(session.role, "reference:manage") && (
+      {can(session, "reference:manage") && (
         <SectionCard title="Upload your own benchmark" description="Organization-provided benchmarks require a source and are shown without the illustrative label. Bulk upload via Data Import (CSV/Excel).">
           <BenchmarkUpload functions={p.functions.filter((x) => x.isActive)} industries={p.industries} />
         </SectionCard>

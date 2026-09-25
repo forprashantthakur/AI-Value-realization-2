@@ -12,6 +12,7 @@ import { BenefitActions } from "@/components/initiative/benefit-actions";
 import { RadarView } from "@/components/charts/charts";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import { EmptyState } from "@/components/ui/misc";
+import { MaturityEditor } from "@/components/value/maturity-editor";
 import { cn } from "@/lib/utils";
 
 export const metadata = { title: "Value Realization" };
@@ -28,9 +29,10 @@ export default async function ValueRealizationPage({ searchParams }: { searchPar
       .filter((b) => steps.some((s) => s.from === b.benefit.status && s.allowedRoles.includes(session.role)))
       .map((b) => ({ e, b })),
   );
-  const orgId = sp.org ?? p.organizations[0].id;
+  const orgId = sp.org && p.organizations.some((o) => o.id === sp.org) ? sp.org : p.organizations[0]?.id;
   const assessment = p.maturity.find((m) => m.organizationId === orgId);
   const mat = assessment ? computeMaturity(assessment) : null;
+  const canAssess = can(session, "settings:edit");
 
   return (
     <div className="space-y-4">
@@ -70,8 +72,8 @@ export default async function ValueRealizationPage({ searchParams }: { searchPar
 
       <div className="grid gap-4 xl:grid-cols-[1fr_360px]">
         <SectionCard
-          title={`Governance queue — ${roleLabel(session.role)}`}
-          description="Benefit lines your role can advance now under the configured workflow. Switch persona (top right) to act as Business Owner or Finance Validator."
+          title={`Governance queue — ${session.roleName}`}
+          description="Benefit lines your role can advance now under the configured workflow. Other steps appear in the queues of the members who hold those roles."
         >
           {queue.length === 0 ? (
             <EmptyState title="Nothing awaiting your action" description="Other roles may have items in their queue." />
@@ -107,7 +109,7 @@ export default async function ValueRealizationPage({ searchParams }: { searchPar
                         evidenceCount={b.benefit.evidence.length}
                         attributionPct={b.benefit.attributionPct}
                         confidence={b.benefit.confidence}
-                        canSubmit={can(session.role, "benefit:submit")}
+                        canSubmit={can(session, "benefit:submit")}
                       />
                     </TD>
                   </TR>
@@ -125,7 +127,7 @@ export default async function ValueRealizationPage({ searchParams }: { searchPar
                 </p>
                 <p className="text-muted-foreground">{s.label}</p>
                 <p className="mt-0.5 text-[11px]">
-                  {s.allowedRoles.map((r) => roleLabel(r)).join(", ")}
+                  {s.allowedRoles.map((r) => roleLabel(r, p.roles)).join(", ")}
                   {s.requiresEvidence && " · evidence required"}
                 </p>
               </li>
@@ -141,13 +143,15 @@ export default async function ValueRealizationPage({ searchParams }: { searchPar
           <div className="flex flex-wrap gap-1 text-xs">
             {p.organizations.map((o) => (
               <Link key={o.id} href={`/value-realization?org=${o.id}`} className={cn("rounded px-1.5 py-0.5", o.id === orgId ? "bg-primary/10 font-medium text-primary" : "hover:bg-muted")}>
-                {o.name.split(" ")[0]}
+                {o.name}
               </Link>
             ))}
           </div>
         }
       >
-        {assessment && mat ? (
+        {!orgId ? (
+          <EmptyState title="No organizations yet" description="Add an organization in Administration to assess its AI value-realization maturity." action={<Link href="/admin?tab=organizations" className="text-xs text-primary hover:underline">Add an organization</Link>} />
+        ) : assessment && mat ? (
           <div className="grid gap-4 lg:grid-cols-[1fr_360px]">
             <RadarView
               data={MATURITY_DIMENSIONS.map((d) => ({ dimension: d, current: assessment.scores[d], target: assessment.target[d] }))}
@@ -189,7 +193,18 @@ export default async function ValueRealizationPage({ searchParams }: { searchPar
             </div>
           </div>
         ) : (
-          <EmptyState title="No maturity assessment for this organization" />
+          <div className="space-y-3">
+            <p className="text-xs text-muted-foreground">No assessment for this organization yet.</p>
+            {canAssess ? <MaturityEditor organizationId={orgId} /> : <EmptyState title="No maturity assessment for this organization" />}
+          </div>
+        )}
+        {orgId && assessment && canAssess && (
+          <details className="mt-4 rounded-md border p-3">
+            <summary className="cursor-pointer text-xs font-medium">Update assessment</summary>
+            <div className="mt-3">
+              <MaturityEditor key={`${orgId}-${assessment.assessedOn}`} organizationId={orgId} assessment={assessment} />
+            </div>
+          </details>
         )}
       </SectionCard>
       <p className="text-[11px] text-muted-foreground">Realized share of portfolio run-rate: {pct(items.reduce((a, e) => a + e.value.leakage.ladder.REALIZED, 0) / Math.max(1, items.reduce((a, e) => a + e.value.leakage.ladder.CURRENT_RUN_RATE, 0)))}.</p>

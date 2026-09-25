@@ -1,4 +1,5 @@
-// AI Value Realization Platform — normalized PostgreSQL schema.
+// AI Value Realization Platform — multi-tenant PostgreSQL schema.
+// Every client workspace is a Tenant; all business data is scoped by tenantId.
 // Money is stored as Decimal(18,2); rates/shares as Decimal(9,6) fractions (0..1).
 
 generator client {
@@ -186,20 +187,97 @@ enum KpiDirection {
   HIGHER_IS_BETTER
 }
 
+
+// ---------------------------------------------------------------------------
+// SaaS tenancy, identity and access
+// ---------------------------------------------------------------------------
+
+/// A client workspace. All business data belongs to exactly one tenant.
+model Tenant {
+  id             String               @id
+  name           String
+  slug           String               @unique
+  apiKeyHash     String?              @unique
+  createdAt      DateTime             @default(now())
+  memberships    Membership[]
+  invitations    Invitation[]
+  roles          Role[]
+  industries     Industry[]
+  organizations  Organization[]
+  businessUnits  BusinessUnit[]
+  functions      FunctionDomain[]
+  processes      Process[]
+  kpis           KpiDefinition[]
+  initiatives    Initiative[]
+  modelPrices    ModelPrice[]
+  benchmarks     Benchmark[]
+  maturity       MaturityAssessment[]
+  auditEntries   AuditLog[]
+  reports        Report[]
+  settings       AppSetting[]
+}
+
+/// A person who can sign in. May belong to many workspaces.
+model UserAccount {
+  id           String       @id
+  email        String       @unique
+  name         String
+  passwordHash String
+  createdAt    DateTime     @default(now())
+  lastLoginAt  DateTime?
+  memberships  Membership[]
+}
+
+model Membership {
+  id        String      @id
+  tenantId  String
+  tenant    Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  userId    String
+  user      UserAccount @relation(fields: [userId], references: [id], onDelete: Cascade)
+  roleKey   String
+  title     String      @default("")
+  createdAt DateTime    @default(now())
+
+  @@unique([tenantId, userId])
+  @@index([userId])
+}
+
+/// One-time invitation link. Only a hash of the token is stored.
+model Invitation {
+  id         String    @id
+  tenantId   String
+  tenant     Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  email      String
+  name       String
+  roleKey    String
+  title      String    @default("")
+  tokenHash  String    @unique
+  invitedBy  String
+  expiresAt  DateTime
+  acceptedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([tenantId])
+}
+
 // ---------------------------------------------------------------------------
 // Organization structure & reference data
 // ---------------------------------------------------------------------------
 
 model Industry {
-  id                String           @id
-  name              String           @unique
+  id                String            @id
+  tenantId          String
+  tenant            Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name              String
   description       String
-  isCustom          Boolean          @default(false)
+  isCustom          Boolean           @default(false)
   suggestedUseCases IndustryUseCase[]
   focusKpis         String[]
   organizations     Organization[]
   benchmarks        Benchmark[]
-  createdAt         DateTime         @default(now())
+  createdAt         DateTime          @default(now())
+
+  @@unique([tenantId, name])
 }
 
 model IndustryUseCase {
@@ -214,6 +292,8 @@ model IndustryUseCase {
 
 model Organization {
   id            String               @id
+  tenantId      String
+  tenant        Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   name          String
   industryId    String
   industry      Industry             @relation(fields: [industryId], references: [id])
@@ -223,12 +303,15 @@ model Organization {
   businessUnits BusinessUnit[]
   initiatives   Initiative[]
   maturity      MaturityAssessment[]
-  users         User[]
   createdAt     DateTime             @default(now())
+
+  @@index([tenantId])
 }
 
 model BusinessUnit {
   id             String       @id
+  tenantId       String
+  tenant         Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   name           String
@@ -240,18 +323,24 @@ model BusinessUnit {
 
 model FunctionDomain {
   id          String          @id
-  name        String          @unique
+  tenantId    String
+  tenant      Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name        String
   description String
   isActive    Boolean         @default(true)
   processes   Process[]
   kpis        KpiDefinition[]
   initiatives Initiative[]
   benchmarks  Benchmark[]
+
+  @@unique([tenantId, name])
 }
 
 /// Self-referencing hierarchy: PROCESS › SUBPROCESS › ACTIVITY › TASK
 model Process {
   id             String         @id
+  tenantId       String
+  tenant         Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   functionId     String
   function       FunctionDomain @relation(fields: [functionId], references: [id])
   parentId       String?
@@ -269,6 +358,8 @@ model Process {
 
 model KpiDefinition {
   id          String          @id
+  tenantId    String
+  tenant      Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   functionId  String?
   function    FunctionDomain? @relation(fields: [functionId], references: [id])
   name        String
@@ -284,11 +375,13 @@ model KpiDefinition {
 
 model Initiative {
   id                    String                @id
-  code                  String                @unique
+  tenantId              String
+  tenant                Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  code                  String
   name                  String
   description           String
   organizationId        String
-  organization          Organization          @relation(fields: [organizationId], references: [id])
+  organization          Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   businessUnitId        String
   businessUnit          BusinessUnit          @relation(fields: [businessUnitId], references: [id])
   functionId            String
@@ -327,6 +420,8 @@ model Initiative {
   createdAt             DateTime              @default(now())
   updatedAt             DateTime              @updatedAt
 
+  @@unique([tenantId, code])
+  @@index([tenantId])
   @@index([organizationId])
   @@index([functionId])
   @@index([stage])
@@ -418,6 +513,8 @@ model Measurement {
 
 model ModelPrice {
   id               String    @id
+  tenantId         String
+  tenant           Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   name             String
   tier             String
   inputPer1M       Decimal   @db.Decimal(18, 6)
@@ -590,6 +687,8 @@ model LeakageNote {
 
 model Benchmark {
   id             String         @id
+  tenantId       String
+  tenant         Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   industryId     String?
   industry       Industry?      @relation(fields: [industryId], references: [id])
   functionId     String
@@ -606,6 +705,8 @@ model Benchmark {
 
 model MaturityAssessment {
   id             String          @id @default(cuid())
+  tenantId       String
+  tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   organizationId String
   organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   assessedOn     DateTime
@@ -626,44 +727,28 @@ model MaturityScore {
 // Security, governance, audit, reporting, settings
 // ---------------------------------------------------------------------------
 
+/// Per-workspace role. `key` is what memberships and the governance workflow reference.
 model Role {
-  id          String   @id // ENTERPRISE_ADMIN, AI_VALUE_OFFICE, ... or CUSTOM_* for administrator-defined roles
+  id          String   @id
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  key         String // ENTERPRISE_ADMIN, AI_VALUE_OFFICE, ... or CUSTOM_* for administrator-defined roles
   name        String
   description String   @default("")
   builtIn     Boolean  @default(false)
   permissions String[]
-  users       User[]
+
+  @@unique([tenantId, key])
 }
 
-model User {
-  id             String        @id
-  name           String
-  email          String        @unique
-  title          String
-  roleId         String
-  role           Role          @relation(fields: [roleId], references: [id])
-  organizationId String?
-  organization   Organization? @relation(fields: [organizationId], references: [id])
-  auditEntries   AuditLog[]
-}
 
-model GovernanceStep {
-  id               String        @id @default(cuid())
-  from             BenefitStatus
-  to               BenefitStatus
-  allowedRoles     String[]
-  label            String
-  requiresEvidence Boolean
-  sortOrder        Int
-
-  @@unique([from, to])
-}
 
 model AuditLog {
   id           String   @id
+  tenantId     String
+  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   at           DateTime @default(now())
   userId       String?
-  user         User?    @relation(fields: [userId], references: [id])
   userName     String
   entity       String
   entityId     String
@@ -673,17 +758,19 @@ model AuditLog {
   next         String?
   reason       String?
 
+  @@index([tenantId, at])
   @@index([initiativeId])
   @@index([entity, entityId])
-  @@index([at])
 }
 
 model Report {
   id           String      @id @default(cuid())
+  tenantId     String
+  tenant       Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   type         String // EXECUTIVE | PROCESS | CFO | PORTFOLIO
   title        String
   initiativeId String?
-  initiative   Initiative? @relation(fields: [initiativeId], references: [id])
+  initiative   Initiative? @relation(fields: [initiativeId], references: [id], onDelete: SetNull)
   generatedBy  String
   generatedAt  DateTime    @default(now())
   filters      Json
@@ -691,7 +778,11 @@ model Report {
 }
 
 model AppSetting {
-  key       String   @id
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  key       String
   value     Json
   updatedAt DateTime @updatedAt
+
+  @@id([tenantId, key])
 }

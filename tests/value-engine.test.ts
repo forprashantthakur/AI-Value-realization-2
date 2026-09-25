@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildDemoPortfolio } from "@/demo";
+import { buildDemoPortfolio } from "./fixtures/demo";
 import type { Benefit, CapacityDisposition, ProcessMetrics } from "@/lib/domain/types";
 import {
   aggregateConfidence,

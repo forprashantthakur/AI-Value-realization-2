@@ -1,4 +1,7 @@
 import Link from "next/link";
+import { NoInitiatives } from "@/components/value/no-initiatives";
+import { getSession } from "@/lib/auth/session";
+import { can } from "@/lib/auth/rbac";
 import { evaluatePortfolio } from "@/lib/services/portfolio-service";
 import { comparisonRows } from "@/lib/services/initiative-vm";
 import { VS_HEX } from "@/lib/services/view-models";
@@ -27,9 +30,10 @@ const MODE_COLOR: Record<string, string> = {
 export default async function ProcessesPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const sp = await searchParams;
   const { portfolio: p, items } = await evaluatePortfolio({});
+  if (!p.initiatives.length) return <NoInitiatives title="Processes" description="Process hierarchy with AI value overlays." canCreate={can(await getSession(), "initiative:edit")} />;
   const live = items.filter((e) => e.init.actual);
-  const selected = live.find((e) => e.init.id === (sp.initiative ?? "ini-s2p")) ?? live[0];
-  const fnFilter = sp.fn ?? "procurement";
+  const selected = live.find((e) => e.init.id === sp.initiative) ?? live[0];
+  const fnFilter = sp.fn ?? selected?.init.functionId ?? p.functions.find((f) => p.processes.some((x) => x.functionId === f.id))?.id ?? "";
   const tree = (parent: string | null, fn: string, depth = 0): { n: ProcessNode; depth: number }[] =>
     p.processes.filter((x) => x.functionId === fn && x.parentId === parent).flatMap((n) => [{ n, depth }, ...tree(n.id, fn, depth + 1)]);
   const rows = tree(null, fnFilter);

@@ -86,19 +86,3 @@ export async function deleteRoleAction(input: unknown) {
     };
   });
 }
-
-const SetUserRole = z.object({ userId: z.string().min(1), role: z.string().min(1) });
-
-export async function setUserRoleAction(input: unknown) {
-  return mutate("users:manage", async (repo, s) => {
-    const v = SetUserRole.parse(input);
-    const p = await repo.loadPortfolio();
-    const u = p.users.find((x) => x.id === v.userId);
-    if (!u) throw new Error("User not found.");
-    if (!p.roles.some((r) => r.id === v.role)) throw new Error("Role not found.");
-    if (u.role === ADMIN_ROLE && v.role !== ADMIN_ROLE && p.users.filter((x) => x.role === ADMIN_ROLE).length <= 1)
-      throw new Error("This is the last Enterprise Admin. Make another user an Enterprise Admin first.");
-    await repo.setUserRole(v.userId, v.role);
-    return { audit: [auditEntry(s, { entity: "User", entityId: u.id, initiativeId: null, field: "role", previous: u.role, next: v.role, reason: u.name })] };
-  });
-}

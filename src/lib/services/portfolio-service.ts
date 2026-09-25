@@ -5,7 +5,7 @@ import type { BenefitStatus, Initiative, LifecycleStage, Portfolio, ScenarioName
 import { BENEFIT_STATUSES, LIFECYCLE_STAGES } from "../domain/types";
 import { defaultScenario, evaluateInitiative, summarizePortfolio, type EvaluatedInitiative, type PortfolioSummary } from "../value-engine";
 import { setCurrency } from "../format";
-import { setRoleRegistry } from "../auth/rbac";
+import { getSession } from "../auth/session";
 
 export interface Filters {
   org?: string;
@@ -54,11 +54,12 @@ export function parseFilters(sp: SP): Filters {
   };
 }
 
+/** The current workspace's portfolio (one load per request). */
 export const loadPortfolio = cache(async (): Promise<Portfolio> => {
-  const repo = await getRepository();
+  const session = await getSession();
+  const repo = await getRepository(session.tenantId);
   const p = await repo.loadPortfolio();
   setCurrency(p.settings.reportingCurrency);
-  setRoleRegistry(p.roles);
   return p;
 });
 

@@ -37,7 +37,7 @@ Content-Type: application/json
         </SectionCard>
       </div>
       <SectionCard title="2 · CSV / Excel upload — monthly measurements" description={`Columns: ${MEASUREMENT_TEMPLATE_COLUMNS.join(", ")}. Rates as fractions (0.08 = 8%). Existing months are updated.`}>
-        <ImportWizard canImport={can(s.role, "data:import")} />
+        <ImportWizard canImport={can(s, "data:import")} />
       </SectionCard>
       <SectionCard title="4 · Connectors" description="Integration adapters map source systems to the canonical import contracts. Planned connectors are interfaces only — no credentials are bundled.">
         <Table>

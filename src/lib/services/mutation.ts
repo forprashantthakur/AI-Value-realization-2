@@ -2,15 +2,16 @@ import "server-only";
 import { revalidatePath } from "next/cache";
 import { ZodError } from "zod";
 import type { AuditEntry } from "../domain/types";
+import { newId } from "../ids";
 import { getRepository, type ValueRepository } from "../data";
-import { ForbiddenError, requirePermission, type Session } from "../auth/session";
+import { ForbiddenError, UnauthenticatedError, requirePermission, type Session } from "../auth/session";
 import type { Permission } from "../auth/rbac";
 
 export type ActionResult<T = undefined> = { ok: true; data?: T } | { ok: false; error: string; fieldErrors?: Record<string, string> };
 
-let seq = 0;
+
 export function auditEntry(s: Session, e: Omit<AuditEntry, "id" | "at" | "userId" | "userName">): AuditEntry {
-  return { id: `aud-${Date.now()}-${++seq}-${Math.random().toString(36).slice(2, 7)}`, at: new Date().toISOString(), userId: s.userId, userName: s.name, ...e };
+  return { id: newId("aud"), at: new Date().toISOString(), userId: s.userId, userName: s.name, ...e };
 }
 
 /** Field-level diff for audit history (previous → next). */
@@ -37,7 +38,7 @@ export function diffAudit(
 export async function mutate<T>(permission: Permission, fn: (repo: ValueRepository, session: Session) => Promise<{ audit: AuditEntry[]; data?: T }>): Promise<ActionResult<T>> {
   try {
     const session = await requirePermission(permission);
-    const repo = await getRepository();
+    const repo = await getRepository(session.tenantId);
     const { audit, data } = await fn(repo, session);
     if (audit.length) await repo.appendAudit(audit);
     revalidatePath("/", "layout");
@@ -48,7 +49,20 @@ export async function mutate<T>(permission: Permission, fn: (repo: ValueReposito
       for (const i of e.issues) fieldErrors[i.path.join(".")] = i.message;
       return { ok: false, error: e.issues[0]?.message ?? "Validation failed", fieldErrors };
     }
-    if (e instanceof ForbiddenError) return { ok: false, error: e.message };
+    if (e instanceof ForbiddenError || e instanceof UnauthenticatedError) return { ok: false, error: e.message };
+    if (isPrismaConstraint(e)) return { ok: false, error: "This record is still referenced by other data (or duplicates an existing one). Remove or change those first." };
     return { ok: false, error: e instanceof Error ? e.message : "Unexpected error" };
   }
+}
+
+function isPrismaConstraint(e: unknown): boolean {
+  const code = (e as { code?: string } | null)?.code;
+  return code === "P2002" || code === "P2003" || code === "P2014";
+}
+
+/** Throws a readable error when a referenced id does not belong to the current workspace. */
+export function assertRef<T extends { id: string }>(list: T[], id: string | null | undefined, what: string): T {
+  const x = list.find((i) => i.id === id);
+  if (!x) throw new Error(`${what} not found in this workspace`);
+  return x;
 }

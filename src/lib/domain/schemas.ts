@@ -64,6 +64,17 @@ export const InitiativePatchSchema = z.object({
   costPerError: nonNeg.optional(),
   laborBasis: z.enum(["ACTIVITY", "FTE_CALIBRATED"]).optional(),
   goLiveDate: z.string().nullable().optional(),
+  code: z.string().trim().min(2).max(16).optional(),
+  organizationId: z.string().min(1).optional(),
+  businessUnitId: z.string().min(1).optional(),
+  functionId: z.string().min(1).optional(),
+  processId: z.string().min(1).optional(),
+  country: z.string().trim().min(2).optional(),
+  useCase: z.string().trim().min(2).optional(),
+  aiTechnology: z.string().trim().min(2).optional(),
+  financeValidator: z.string().optional(),
+  startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  tags: z.array(z.string().trim().min(1)).max(20).optional(),
 });
 
 export const EvidenceSchema = z.object({

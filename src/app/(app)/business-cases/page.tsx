@@ -1,4 +1,7 @@
 import Link from "next/link";
+import { NoInitiatives } from "@/components/value/no-initiatives";
+import { getSession } from "@/lib/auth/session";
+import { can } from "@/lib/auth/rbac";
 import { computeRoi } from "@/lib/value-engine";
 import { evaluatePortfolio } from "@/lib/services/portfolio-service";
 import { money, pct } from "@/lib/format";
@@ -14,6 +17,7 @@ export const metadata = { title: "Business Cases" };
 
 export default async function BusinessCasesPage() {
   const { portfolio: p, items } = await evaluatePortfolio({});
+  if (!p.initiatives.length) return <NoInitiatives title="Business Cases" description="Approved business case vs measured value." canCreate={can(await getSession(), "initiative:edit")} />;
   const rows = items.map((e) => {
     const bc = e.init.businessCase;
     const bcRoi = computeRoi({

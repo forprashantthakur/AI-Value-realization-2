@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { Loader2, Lock, Plus, Save, Trash2, X } from "lucide-react";
 import type { RoleDefinition, User } from "@/lib/domain/types";
 import { PERMISSION_LABEL, PERMISSIONS, type Permission } from "@/lib/auth/rbac";
-import { createRoleAction, deleteRoleAction, setUserRoleAction, updateRoleAction } from "@/app/actions/roles";
+import { createRoleAction, deleteRoleAction, updateRoleAction } from "@/app/actions/roles";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,13 +16,15 @@ const ADMIN = "ENTERPRISE_ADMIN";
 const SHORT: Record<Permission, string> = {
   "portfolio:view": "View",
   "initiative:edit": "Initiatives",
+  "initiative:delete": "Delete initiatives",
   "measurement:edit": "Measure",
   "cost:edit": "Costs",
   "benefit:submit": "Benefits",
   "scenario:edit": "Scenarios",
   "settings:edit": "Settings",
   "reference:manage": "Reference data",
-  "users:manage": "Users & roles",
+  "users:manage": "Members & roles",
+  "workspace:manage": "Workspace",
   "data:import": "Import",
   "report:export": "Export",
   "audit:view": "Audit",
@@ -256,67 +258,6 @@ export function RoleManager({ roles, users }: { roles: RoleDefinition[]; users: 
       <p className="text-[11px] text-muted-foreground">
         Hover a column heading for the full permission. Enterprise Admin is locked so the platform can&apos;t lose its administrator. Built-in roles can be adjusted but not deleted.
       </p>
-    </div>
-  );
-}
-
-/** Assign each user a role (built-in or custom). */
-export function UserRoleAssignments({ users, roles }: { users: User[]; roles: RoleDefinition[] }) {
-  const router = useRouter();
-  const [pending, start] = useTransition();
-  const [busy, setBusy] = useState<string | null>(null);
-  const [msg, setMsg] = useState<Msg>(null);
-  return (
-    <div className="space-y-2">
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b text-left text-[11px] uppercase tracking-wide text-muted-foreground">
-              <th className="py-1.5 font-medium">Name</th>
-              <th className="py-1.5 font-medium">Title</th>
-              <th className="py-1.5 font-medium">Email</th>
-              <th className="py-1.5 font-medium">Role</th>
-            </tr>
-          </thead>
-          <tbody>
-            {users.map((u) => (
-              <tr key={u.id} className="border-b">
-                <td className="py-1.5 font-medium">{u.name}</td>
-                <td className="py-1.5 text-xs">{u.title}</td>
-                <td className="py-1.5 text-xs text-muted-foreground">{u.email}</td>
-                <td className="py-1.5">
-                  <div className="flex items-center gap-2">
-                    <select
-                      aria-label={`Role for ${u.name}`}
-                      value={u.role}
-                      disabled={pending}
-                      onChange={(e) => {
-                        const role = e.target.value;
-                        setBusy(u.id);
-                        start(async () => {
-                          const r = await setUserRoleAction({ userId: u.id, role });
-                          setMsg(r.ok ? { ok: true, text: `${u.name} is now ${roles.find((x) => x.id === role)?.name}.` } : { ok: false, text: r.error });
-                          setBusy(null);
-                          router.refresh();
-                        });
-                      }}
-                      className="h-8 rounded-md border border-input bg-card px-2 text-xs"
-                    >
-                      {roles.map((r) => (
-                        <option key={r.id} value={r.id}>
-                          {r.name}
-                        </option>
-                      ))}
-                    </select>
-                    {busy === u.id && <Loader2 className="h-3.5 w-3.5 animate-spin" aria-label="Saving" />}
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <Status msg={msg} />
     </div>
   );
 }

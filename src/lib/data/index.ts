@@ -1,22 +1,18 @@
 import type { ValueRepository } from "./repository";
 import { MemoryRepository } from "./memory-repository";
-
-let repo: ValueRepository | null = null;
+import { usesDatabase } from "../identity";
 
 /**
- * Repository factory. DATA_SOURCE=prisma|memory; defaults to prisma when DATABASE_URL is set,
- * otherwise the in-memory demo repository (zero-setup mode).
+ * Returns the repository for one workspace. PostgreSQL (Prisma) when DATABASE_URL is set,
+ * otherwise the in-process store (local development only — data is lost on restart).
  */
-export async function getRepository(): Promise<ValueRepository> {
-  if (repo) return repo;
-  const mode = process.env.DATA_SOURCE ?? (process.env.DATABASE_URL ? "prisma" : "memory");
-  if (mode === "prisma") {
+export async function getRepository(tenantId: string): Promise<ValueRepository> {
+  if (!tenantId) throw new Error("A workspace is required");
+  if (usesDatabase()) {
     const { PrismaRepository } = await import("./prisma-repository");
-    repo = new PrismaRepository();
-  } else {
-    repo = new MemoryRepository();
+    return new PrismaRepository(tenantId);
   }
-  return repo;
+  return new MemoryRepository(tenantId);
 }
 
-export type { ValueRepository } from "./repository";
+export type { ValueRepository, InitiativePatch } from "./repository";

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildDemoPortfolio } from "@/demo";
+import { buildDemoPortfolio } from "./fixtures/demo";
 import { evaluateInitiative, summarizePortfolio } from "@/lib/value-engine";
 import { answerDeterministic } from "@/lib/advisor/engine";
 import { guardNumbers } from "@/lib/advisor/narrator";
@@ -133,19 +133,74 @@ describe("custom roles", () => {
     expect(can("UNKNOWN_ROLE", "portfolio:view", roles)).toBe(false);
     expect(can("ENTERPRISE_ADMIN", "users:manage", [])).toBe(true);
   });
-  it("adds, reassigns and deletes roles in the repository", async () => {
-    const { MemoryRepository, resetMemoryState } = await import("@/lib/data/memory-repository");
+  it("adds, reassigns and deletes roles in a workspace repository", async () => {
+    const { resetMemoryState } = await import("@/lib/data/memory-state");
+    const { MemoryIdentityStore } = await import("@/lib/identity/memory-store");
+    const { MemoryRepository } = await import("@/lib/data/memory-repository");
+    const { builtInRoleDefinitions } = await import("@/lib/auth/rbac");
     resetMemoryState();
-    const repo = new MemoryRepository();
+    const ids = new MemoryIdentityStore();
+    const owner = await ids.createAccount({ id: "u1", email: "owner@x.test", name: "Owner", passwordHash: "x" });
+    const other = await ids.createAccount({ id: "u2", email: "member@x.test", name: "Member", passwordHash: "x" });
+    await ids.createWorkspace({ id: "ws_a", name: "A", slug: "a", ownerId: owner.id, ownerTitle: "", roles: builtInRoleDefinitions(), catalog: null });
+    await ids.addMember("ws_a", other.id, "VIEWER", "");
+    const repo = new MemoryRepository("ws_a");
     await repo.upsertRole({ id: "CUSTOM_RISK", name: "Risk", description: "", permissions: ["portfolio:view"], builtIn: false });
-    await repo.setUserRole("u-view", "CUSTOM_RISK");
+    await ids.updateMember("ws_a", other.id, { roleKey: "CUSTOM_RISK" });
     let p = await repo.loadPortfolio();
     expect(p.roles.some((r) => r.id === "CUSTOM_RISK")).toBe(true);
-    expect(p.users.find((u) => u.id === "u-view")!.role).toBe("CUSTOM_RISK");
+    expect(p.users.find((u) => u.id === other.id)!.role).toBe("CUSTOM_RISK");
     await repo.deleteRole("CUSTOM_RISK", "VIEWER");
     p = await repo.loadPortfolio();
     expect(p.roles.some((r) => r.id === "CUSTOM_RISK")).toBe(false);
-    expect(p.users.find((u) => u.id === "u-view")!.role).toBe("VIEWER");
+    expect(p.users.find((u) => u.id === other.id)!.role).toBe("VIEWER");
     resetMemoryState();
+  });
+});
+
+describe("multi-tenancy", () => {
+  it("keeps workspaces isolated and provisions a namespaced starter catalog", async () => {
+    const { resetMemoryState } = await import("@/lib/data/memory-state");
+    const { MemoryIdentityStore } = await import("@/lib/identity/memory-store");
+    const { MemoryRepository } = await import("@/lib/data/memory-repository");
+    const { builtInRoleDefinitions } = await import("@/lib/auth/rbac");
+    const { starterCatalog } = await import("@/lib/catalog/starter");
+    resetMemoryState();
+    const ids = new MemoryIdentityStore();
+    const u = await ids.createAccount({ id: "u1", email: "a@x.test", name: "A", passwordHash: "x" });
+    await ids.createWorkspace({ id: "ws_1", name: "Client One", slug: "one", ownerId: u.id, ownerTitle: "", roles: builtInRoleDefinitions(), catalog: starterCatalog("one") });
+    await ids.createWorkspace({ id: "ws_2", name: "Client Two", slug: "two", ownerId: u.id, ownerTitle: "", roles: builtInRoleDefinitions(), catalog: starterCatalog("two", { currency: "USD" }) });
+    const r1 = new MemoryRepository("ws_1");
+    const r2 = new MemoryRepository("ws_2");
+    const p1 = await r1.loadPortfolio();
+    const p2 = await r2.loadPortfolio();
+    expect(p1.initiatives).toHaveLength(0);
+    expect(p1.organizations).toHaveLength(0);
+    expect(p1.processes.length).toBeGreaterThan(20);
+    expect(p1.processes.every((x) => x.id.startsWith("one_") && (!x.parentId || x.parentId.startsWith("one_")))).toBe(true);
+    expect(p2.settings.reportingCurrency).toBe("USD");
+    expect(new Set([...p1.processes, ...p2.processes].map((x) => x.id)).size).toBe(p1.processes.length + p2.processes.length);
+    await r1.upsertOrganization({ id: "org_1", name: "Acme", industryId: p1.industries[0].id, headquarters: "", currency: "INR", isFictional: false });
+    expect((await r1.loadPortfolio()).organizations).toHaveLength(1);
+    expect((await r2.loadPortfolio()).organizations).toHaveLength(0);
+    await expect(r2.deleteInitiative("does-not-exist")).rejects.toThrow();
+    expect((await ids.listWorkspacesForUser(u.id)).map((w) => w.name)).toEqual(["Client One", "Client Two"]);
+    resetMemoryState();
+  });
+});
+
+describe("passwords & tokens", () => {
+  it("hashes with scrypt and verifies", async () => {
+    const { hashPassword, verifyPassword, hashToken } = await import("@/lib/identity/password");
+    const h = await hashPassword("correct horse battery");
+    expect(h.startsWith("scrypt$")).toBe(true);
+    expect(await verifyPassword("correct horse battery", h)).toBe(true);
+    expect(await verifyPassword("wrong", h)).toBe(false);
+    expect(hashToken("abc")).toHaveLength(64);
+  });
+  it("generates unique ids", async () => {
+    const { newId } = await import("@/lib/ids");
+    const set = new Set(Array.from({ length: 1000 }, () => newId("x")));
+    expect(set.size).toBe(1000);
   });
 });

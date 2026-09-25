@@ -20,7 +20,7 @@ export default async function SettingsPage() {
         </p>
       </SectionCard>
       <SectionCard title="Edit settings">
-        {can(s.role, "settings:edit") ? <SettingsForm settings={p.settings} /> : <EmptyState title="Read-only" description="Switch to the AI Value Office or Enterprise Admin persona to edit settings." />}
+        {can(s, "settings:edit") ? <SettingsForm settings={p.settings} /> : <EmptyState title="Read-only" description="Only roles with the “Change calculation settings” permission (e.g. AI Value Office, Enterprise Admin) can edit settings." />}
       </SectionCard>
     </div>
   );

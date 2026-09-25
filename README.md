@@ -46,6 +46,18 @@ npm run build       # next build
 
 Use the persona switcher (top right) to act as Enterprise Admin, AI Value Office, Finance Validator, Business Owner, Process Owner, AI Product Owner, Consultant or Viewer. Permissions and the governance workflow are enforced server-side.
 
+### Managing roles
+
+Sign in as **Enterprise Admin** (or any role with *Manage users and roles*) and open **Administration → Users & roles**:
+
+- **Add a role:** enter a name and description, optionally start from an existing role's permissions, tick permissions, click **Add role**. Custom roles get IDs like `CUSTOM_RISK_OFFICER`.
+- **Change a role:** tick or untick permissions in its row and click **Save**. Built-in roles can be adjusted; Enterprise Admin is locked to all permissions.
+- **Delete a role:** click **Delete** on a custom role, choose where its users move, confirm. The role is also removed from governance steps (a step never ends up with nobody allowed).
+- **Assign users:** change a user's role in the Users table. The last Enterprise Admin can't be demoted.
+- To let a custom role perform benefit sign-offs, tick it under **Administration → Governance workflow**.
+
+Every change is audited. With PostgreSQL, apply `prisma/migrations/0002_custom_roles` (`npx prisma migrate deploy`).
+
 ---
 
 ## 2. Architecture

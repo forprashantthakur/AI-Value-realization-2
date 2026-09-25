@@ -3,7 +3,7 @@ import { PersonaSwitcher } from "@/components/shell/persona-switcher";
 import { AdvisorPanel } from "@/components/advisor/advisor-panel";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { getSession } from "@/lib/auth/session";
-import { ROLE_LABEL } from "@/lib/auth/rbac";
+import { roleLabel } from "@/lib/auth/rbac";
 import { loadPortfolio } from "@/lib/services/portfolio-service";
 import { getRepository } from "@/lib/data";
 
@@ -31,7 +31,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               <AdvisorPanel />
               <PersonaSwitcher
                 current={session.userId}
-                users={portfolio.users.map((u) => ({ id: u.id, name: u.name, role: ROLE_LABEL[u.role] }))}
+                users={portfolio.users.map((u) => ({ id: u.id, name: u.name, role: roleLabel(u.role) }))}
               />
             </div>
           </header>

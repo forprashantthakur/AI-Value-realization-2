@@ -627,8 +627,10 @@ model MaturityScore {
 // ---------------------------------------------------------------------------
 
 model Role {
-  id          String   @id // ENTERPRISE_ADMIN, AI_VALUE_OFFICE, ...
+  id          String   @id // ENTERPRISE_ADMIN, AI_VALUE_OFFICE, ... or CUSTOM_* for administrator-defined roles
   name        String
+  description String   @default("")
+  builtIn     Boolean  @default(false)
   permissions String[]
   users       User[]
 }

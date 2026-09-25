@@ -3,9 +3,8 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Plus, Save } from "lucide-react";
 import type { AppSettings, FunctionDomain, GovernanceStep, ModelPrice, ProcessNode, Role } from "@/lib/domain/types";
-import { AUTOMATION_MODES, PROCESS_LEVELS, ROLES } from "@/lib/domain/types";
+import { AUTOMATION_MODES, PROCESS_LEVELS } from "@/lib/domain/types";
 import { MODE_LABEL, STATUS_LABEL } from "@/lib/domain/labels";
-import { ROLE_LABEL } from "@/lib/auth/rbac";
 import { addIndustryAction, addKpiAction, addProcessAction, saveGovernanceAction, saveSettingsAction, upsertModelPriceAction } from "@/app/actions/admin";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -226,7 +225,7 @@ export function ModelPriceEditor({ prices }: { prices: ModelPrice[] }) {
   );
 }
 
-export function GovernanceEditor({ steps }: { steps: GovernanceStep[] }) {
+export function GovernanceEditor({ steps, roles }: { steps: GovernanceStep[]; roles: { id: Role; name: string }[] }) {
   const { pending, run, Msg } = useSubmit();
   const [s, setS] = useState(steps);
   const toggle = (i: number, r: Role) =>
@@ -238,9 +237,9 @@ export function GovernanceEditor({ steps }: { steps: GovernanceStep[] }) {
           <thead>
             <tr className="border-b text-left text-[11px] uppercase text-muted-foreground">
               <th className="py-1.5">Step</th>
-              {ROLES.map((r) => (
-                <th key={r} className="px-1 text-center font-medium normal-case">
-                  {ROLE_LABEL[r]}
+              {roles.map((r) => (
+                <th key={r.id} className="px-1 text-center font-medium normal-case">
+                  {r.name}
                 </th>
               ))}
               <th className="px-1 text-center">Evidence</th>
@@ -255,9 +254,9 @@ export function GovernanceEditor({ steps }: { steps: GovernanceStep[] }) {
                   </p>
                   <p className="text-[11px] text-muted-foreground">{x.label}</p>
                 </td>
-                {ROLES.map((r) => (
-                  <td key={r} className="px-1 text-center">
-                    <input type="checkbox" checked={x.allowedRoles.includes(r)} onChange={() => toggle(i, r)} aria-label={`${ROLE_LABEL[r]} may ${x.label}`} />
+                {roles.map((r) => (
+                  <td key={r.id} className="px-1 text-center">
+                    <input type="checkbox" checked={x.allowedRoles.includes(r.id)} onChange={() => toggle(i, r.id)} aria-label={`${r.name} may ${x.label}`} />
                   </td>
                 ))}
                 <td className="text-center">

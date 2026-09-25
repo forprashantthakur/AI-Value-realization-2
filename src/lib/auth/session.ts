@@ -3,7 +3,7 @@ import { cookies } from "next/headers";
 import { SignJWT, jwtVerify } from "jose";
 import type { Role, User } from "../domain/types";
 import { getRepository } from "../data";
-import { can, type Permission } from "./rbac";
+import { can, setRoleRegistry, type Permission } from "./rbac";
 
 const COOKIE = "avp_session";
 const secret = () => new TextEncoder().encode(process.env.AUTH_SECRET ?? "dev-only-insecure-secret-change-me-please-32b");
@@ -23,17 +23,20 @@ export interface Session {
 export async function getSession(): Promise<Session> {
   const jar = await cookies();
   const token = jar.get(COOKIE)?.value;
+  let userId: string | null = null;
   if (token) {
     try {
       const { payload } = await jwtVerify(token, secret());
-      return payload as unknown as Session;
+      userId = String((payload as { userId?: string }).userId ?? "");
     } catch {
       // fall through to default persona
     }
   }
+  // Resolve the user on every request so role changes made by an administrator apply immediately.
   const repo = await getRepository();
   const p = await repo.loadPortfolio();
-  const u = p.users.find((x) => x.role === "AI_VALUE_OFFICE") ?? p.users[0];
+  setRoleRegistry(p.roles);
+  const u = p.users.find((x) => x.id === userId) ?? p.users.find((x) => x.role === "AI_VALUE_OFFICE") ?? p.users[0];
   return toSession(u);
 }
 

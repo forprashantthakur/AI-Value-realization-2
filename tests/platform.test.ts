@@ -119,3 +119,33 @@ describe("insights", () => {
     expect(ins.some((i) => i.title.includes("Baseline data does not reconcile") && i.title.includes("Source-to-Pay"))).toBe(true);
   });
 });
+
+describe("custom roles", () => {
+  it("builds stable IDs for custom roles", async () => {
+    const { customRoleId } = await import("@/lib/auth/rbac");
+    expect(customRoleId(" Risk Officer ")).toBe("CUSTOM_RISK_OFFICER");
+  });
+  it("checks permissions against administrator-defined roles; admin is always allowed", async () => {
+    const { can, builtInRoleDefinitions } = await import("@/lib/auth/rbac");
+    const roles = [...builtInRoleDefinitions(), { id: "CUSTOM_RISK", name: "Risk", description: "", permissions: ["portfolio:view", "audit:view"], builtIn: false }];
+    expect(can("CUSTOM_RISK", "audit:view", roles)).toBe(true);
+    expect(can("CUSTOM_RISK", "cost:edit", roles)).toBe(false);
+    expect(can("UNKNOWN_ROLE", "portfolio:view", roles)).toBe(false);
+    expect(can("ENTERPRISE_ADMIN", "users:manage", [])).toBe(true);
+  });
+  it("adds, reassigns and deletes roles in the repository", async () => {
+    const { MemoryRepository, resetMemoryState } = await import("@/lib/data/memory-repository");
+    resetMemoryState();
+    const repo = new MemoryRepository();
+    await repo.upsertRole({ id: "CUSTOM_RISK", name: "Risk", description: "", permissions: ["portfolio:view"], builtIn: false });
+    await repo.setUserRole("u-view", "CUSTOM_RISK");
+    let p = await repo.loadPortfolio();
+    expect(p.roles.some((r) => r.id === "CUSTOM_RISK")).toBe(true);
+    expect(p.users.find((u) => u.id === "u-view")!.role).toBe("CUSTOM_RISK");
+    await repo.deleteRole("CUSTOM_RISK", "VIEWER");
+    p = await repo.loadPortfolio();
+    expect(p.roles.some((r) => r.id === "CUSTOM_RISK")).toBe(false);
+    expect(p.users.find((u) => u.id === "u-view")!.role).toBe("VIEWER");
+    resetMemoryState();
+  });
+});

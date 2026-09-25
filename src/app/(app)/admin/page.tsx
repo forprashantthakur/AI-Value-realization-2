@@ -1,10 +1,10 @@
 import Link from "next/link";
 import { loadPortfolio } from "@/lib/services/portfolio-service";
 import { getSession } from "@/lib/auth/session";
-import { can, PERMISSIONS, ROLE_LABEL, ROLE_PERMISSIONS } from "@/lib/auth/rbac";
-import { ROLES } from "@/lib/domain/types";
+import { can, PERMISSION_LABEL, PERMISSIONS, roleLabel } from "@/lib/auth/rbac";
 import { PageHeader, SectionCard } from "@/components/value/page-header";
 import { AddIndustryForm, AddKpiForm, AddProcessForm, GovernanceEditor, ModelPriceEditor } from "@/components/admin/admin-forms";
+import { RoleManager, UserRoleAssignments } from "@/components/admin/role-manager";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import { EmptyState } from "@/components/ui/misc";
 import { Badge } from "@/components/ui/badge";
@@ -37,61 +37,75 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
           </Link>
         ))}
       </nav>
-      {!manage && tab !== "users" && tab !== "audit" && <p className="text-xs text-amber-700">Read-only: your role ({ROLE_LABEL[s.role]}) cannot change reference data.</p>}
+      {!manage && tab !== "users" && tab !== "audit" && <p className="text-xs text-amber-700">Read-only: your role ({roleLabel(s.role)}) cannot change reference data.</p>}
 
       {tab === "users" && (
         <>
-          <SectionCard title="Users" description="Authentication is abstracted behind a signed session; plug in your IdP (OIDC/SAML). Use the persona switcher to try each role.">
-            <Table>
-              <THead>
-                <TR>
-                  <TH>Name</TH>
-                  <TH>Title</TH>
-                  <TH>Email</TH>
-                  <TH>Role</TH>
-                </TR>
-              </THead>
-              <TBody>
-                {p.users.map((u) => (
-                  <TR key={u.id}>
-                    <TD className="font-medium">{u.name}</TD>
-                    <TD className="text-xs">{u.title}</TD>
-                    <TD className="text-xs text-muted-foreground">{u.email}</TD>
-                    <TD>
-                      <Badge variant="secondary">{ROLE_LABEL[u.role]}</Badge>
-                    </TD>
-                  </TR>
-                ))}
-              </TBody>
-            </Table>
-          </SectionCard>
-          <SectionCard title="Role-based access control" description="Permission matrix enforced on every server action and API route. Benefit status changes are additionally governed by the workflow.">
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="border-b text-left text-[11px] text-muted-foreground">
-                    <th className="py-1.5">Permission</th>
-                    {ROLES.map((r) => (
-                      <th key={r} className="px-1 text-center font-medium">
-                        {ROLE_LABEL[r]}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {PERMISSIONS.map((perm) => (
-                    <tr key={perm} className="border-b">
-                      <td className="py-1.5 font-mono text-[11px]">{perm}</td>
-                      {ROLES.map((r) => (
-                        <td key={r} className="text-center">
-                          {ROLE_PERMISSIONS[r].includes(perm) ? <span className="text-[#006300]" aria-label="allowed">●</span> : <span className="text-muted-foreground/40" aria-label="not allowed">·</span>}
-                        </td>
+          <SectionCard
+            title="Roles & permissions"
+            description="Add custom roles, change what each role can do, or delete roles you no longer need. Changes apply to signed-in users immediately and are recorded in the audit log."
+          >
+            {can(s.role, "users:manage") ? (
+              <RoleManager roles={p.roles} users={p.users} />
+            ) : (
+              <>
+                <p className="mb-3 text-xs text-amber-700">Read-only: only roles with the “Manage users and roles” permission can change roles.</p>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="border-b text-left text-[11px] text-muted-foreground">
+                        <th className="py-1.5">Permission</th>
+                        {p.roles.map((r) => (
+                          <th key={r.id} className="px-1 text-center font-medium">
+                            {r.name}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {PERMISSIONS.map((perm) => (
+                        <tr key={perm} className="border-b">
+                          <td className="py-1.5">{PERMISSION_LABEL[perm]}</td>
+                          {p.roles.map((r) => (
+                            <td key={r.id} className="text-center">
+                              {can(r.id, perm, p.roles) ? <span className="text-[#006300]" aria-label="allowed">●</span> : <span className="text-muted-foreground/40" aria-label="not allowed">·</span>}
+                            </td>
+                          ))}
+                        </tr>
                       ))}
-                    </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
+          </SectionCard>
+          <SectionCard title="Users" description="Authentication is abstracted behind a signed session; plug in your IdP (OIDC/SAML). Use the persona switcher (top right) to try each role.">
+            {can(s.role, "users:manage") ? (
+              <UserRoleAssignments users={p.users} roles={p.roles} />
+            ) : (
+              <Table>
+                <THead>
+                  <TR>
+                    <TH>Name</TH>
+                    <TH>Title</TH>
+                    <TH>Email</TH>
+                    <TH>Role</TH>
+                  </TR>
+                </THead>
+                <TBody>
+                  {p.users.map((u) => (
+                    <TR key={u.id}>
+                      <TD className="font-medium">{u.name}</TD>
+                      <TD className="text-xs">{u.title}</TD>
+                      <TD className="text-xs text-muted-foreground">{u.email}</TD>
+                      <TD>
+                        <Badge variant="secondary">{roleLabel(u.role)}</Badge>
+                      </TD>
+                    </TR>
                   ))}
-                </tbody>
-              </table>
-            </div>
+                </TBody>
+              </Table>
+            )}
           </SectionCard>
         </>
       )}
@@ -182,7 +196,7 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
 
       {tab === "governance" && (
         <SectionCard title="Value governance workflow" description="AI Product Owner submits → Business Owner validates operational improvement → Finance validates financial value → AI Value Office approves realized value. Configure who may perform each step.">
-          {can(s.role, "settings:edit") ? <GovernanceEditor steps={p.settings.governance} /> : <EmptyState title="Read-only" description="AI Value Office or Enterprise Admin can edit the workflow." />}
+          {can(s.role, "settings:edit") ? <GovernanceEditor steps={p.settings.governance} roles={p.roles.map((r) => ({ id: r.id, name: r.name }))} /> : <EmptyState title="Read-only" description="AI Value Office or Enterprise Admin can edit the workflow." />}
         </SectionCard>
       )}
 

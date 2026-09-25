@@ -20,6 +20,7 @@ import type {
   ProcessMetrics,
   ProcessNode,
   Role,
+  RoleDefinition,
   Scenario,
   ScenarioOverrides,
 } from "../domain/types";
@@ -311,7 +312,7 @@ export class PrismaRepository implements ValueRepository {
   readonly kind = "prisma" as const;
 
   async loadPortfolio(): Promise<Portfolio> {
-    const [industries, organizations, businessUnits, functions, processes, kpis, initiatives, modelPrices, benchmarks, maturity, users, settingsRow, audit] =
+    const [industries, organizations, businessUnits, functions, processes, kpis, initiatives, modelPrices, benchmarks, maturity, users, roles, settingsRow, audit] =
       await Promise.all([
         prisma.industry.findMany({ include: { suggestedUseCases: { orderBy: { sortOrder: "asc" } } } }),
         prisma.organization.findMany(),
@@ -324,6 +325,7 @@ export class PrismaRepository implements ValueRepository {
         prisma.benchmark.findMany(),
         prisma.maturityAssessment.findMany({ include: { scores: true } }),
         prisma.user.findMany(),
+        prisma.role.findMany({ orderBy: [{ builtIn: "desc" }, { name: "asc" }] }),
         prisma.appSetting.findUnique({ where: { key: "settings" } }),
         prisma.auditLog.findMany({ orderBy: { at: "desc" }, take: 2000 }),
       ]);
@@ -376,6 +378,7 @@ export class PrismaRepository implements ValueRepository {
         }),
       ),
       users: users.map((u) => ({ id: u.id, name: u.name, email: u.email, role: u.roleId as Role, title: u.title, organizationId: u.organizationId })),
+      roles: roles.map((r): RoleDefinition => ({ id: r.id, name: r.name, description: r.description, permissions: r.permissions, builtIn: r.builtIn })),
       settings: { ...defaultSettings, ...((settingsRow?.value as Partial<AppSettings> | undefined) ?? {}) },
       audit: audit.map((a) => ({
         id: a.id,
@@ -581,6 +584,16 @@ export class PrismaRepository implements ValueRepository {
     const { id, ...data } = p;
     const d = { ...data, description: data.description ?? null };
     await prisma.process.upsert({ where: { id }, create: { id, ...d }, update: d });
+  }
+  async upsertRole(r: RoleDefinition) {
+    const data = { name: r.name, description: r.description, permissions: r.permissions, builtIn: r.builtIn };
+    await prisma.role.upsert({ where: { id: r.id }, create: { id: r.id, ...data }, update: data });
+  }
+  async deleteRole(roleId: string, reassignTo: string) {
+    await prisma.$transaction([prisma.user.updateMany({ where: { roleId }, data: { roleId: reassignTo } }), prisma.role.delete({ where: { id: roleId } })]);
+  }
+  async setUserRole(userId: string, role: string) {
+    await prisma.user.update({ where: { id: userId }, data: { roleId: role } });
   }
   async appendAudit(entries: AuditEntry[]) {
     await prisma.auditLog.createMany({

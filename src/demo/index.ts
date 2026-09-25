@@ -2,6 +2,7 @@ import type { AuditEntry, Portfolio } from "@/lib/domain/types";
 import { buildInitiative } from "./generator";
 import { initiativeSpecs } from "./initiatives";
 import * as ref from "./reference";
+import { builtInRoleDefinitions } from "@/lib/auth/rbac";
 
 /** Builds the full FICTIONAL demo portfolio. Deterministic — same output on every call. */
 export function buildDemoPortfolio(): Portfolio {
@@ -63,6 +64,7 @@ export function buildDemoPortfolio(): Portfolio {
     benchmarks: ref.benchmarks,
     maturity: ref.maturityAssessments,
     users: ref.users,
+    roles: builtInRoleDefinitions(),
     settings: structuredClone(ref.defaultSettings),
     audit,
   };

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { evaluatePortfolio } from "@/lib/services/portfolio-service";
 import { getSession } from "@/lib/auth/session";
-import { can, ROLE_LABEL } from "@/lib/auth/rbac";
+import { can, roleLabel } from "@/lib/auth/rbac";
 import { computeMaturity, MATURITY_LEVELS } from "@/lib/value-engine";
 import { LIFECYCLE_STAGES, MATURITY_DIMENSIONS } from "@/lib/domain/types";
 import { STAGE_GATE, STAGE_LABEL, STATUS_LABEL } from "@/lib/domain/labels";
@@ -70,7 +70,7 @@ export default async function ValueRealizationPage({ searchParams }: { searchPar
 
       <div className="grid gap-4 xl:grid-cols-[1fr_360px]">
         <SectionCard
-          title={`Governance queue — ${ROLE_LABEL[session.role]}`}
+          title={`Governance queue — ${roleLabel(session.role)}`}
           description="Benefit lines your role can advance now under the configured workflow. Switch persona (top right) to act as Business Owner or Finance Validator."
         >
           {queue.length === 0 ? (
@@ -125,7 +125,7 @@ export default async function ValueRealizationPage({ searchParams }: { searchPar
                 </p>
                 <p className="text-muted-foreground">{s.label}</p>
                 <p className="mt-0.5 text-[11px]">
-                  {s.allowedRoles.map((r) => ROLE_LABEL[r]).join(", ")}
+                  {s.allowedRoles.map((r) => roleLabel(r)).join(", ")}
                   {s.requiresEvidence && " · evidence required"}
                 </p>
               </li>

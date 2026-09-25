@@ -95,6 +95,19 @@ export class MemoryRepository implements ValueRepository {
   async appendAudit(entries: Parameters<ValueRepository["appendAudit"]>[0]) {
     state().audit.unshift(...entries);
   }
+  async upsertRole(role: Parameters<ValueRepository["upsertRole"]>[0]) {
+    upsert(state().roles, role);
+  }
+  async deleteRole(roleId: string, reassignTo: string) {
+    const s = state();
+    for (const u of s.users) if (u.role === roleId) u.role = reassignTo;
+    s.roles = s.roles.filter((r) => r.id !== roleId);
+  }
+  async setUserRole(userId: string, role: string) {
+    const u = state().users.find((x) => x.id === userId);
+    if (!u) throw new Error("User not found");
+    u.role = role;
+  }
 }
 
 /** Test/helper hook to reset demo state. */

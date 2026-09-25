@@ -1,5 +1,6 @@
 import type { Role, User } from "@/lib/domain/types";
-import { can, type Permission } from "@/lib/auth/rbac";
+import { can, setRoleRegistry, type Permission } from "@/lib/auth/rbac";
+import { getRepository } from "@/lib/data";
 
 export interface Session {
   userId: string;
@@ -7,16 +8,20 @@ export interface Session {
   role: Role;
   title: string;
 }
-let current: Session = { userId: "u-avo", name: "Daniel Okafor", role: "AI_VALUE_OFFICE", title: "Head of AI Value Office" };
+let currentUserId = "u-avo";
 
+/** Browser-demo session: resolves the chosen persona from the in-memory store on every call. */
 export async function getSession(): Promise<Session> {
-  return current;
+  const p = await (await getRepository()).loadPortfolio();
+  setRoleRegistry(p.roles);
+  const u = p.users.find((x) => x.id === currentUserId) ?? p.users[0];
+  return toSession(u);
 }
 export function toSession(u: User): Session {
   return { userId: u.id, name: u.name, role: u.role, title: u.title };
 }
 export async function signIn(u: User) {
-  current = toSession(u);
+  currentUserId = u.id;
 }
 export class ForbiddenError extends Error {
   constructor(permission: string) {
@@ -24,6 +29,7 @@ export class ForbiddenError extends Error {
   }
 }
 export async function requirePermission(permission: Permission): Promise<Session> {
-  if (!can(current.role, permission)) throw new ForbiddenError(permission);
-  return current;
+  const s = await getSession();
+  if (!can(s.role, permission)) throw new ForbiddenError(permission);
+  return s;
 }

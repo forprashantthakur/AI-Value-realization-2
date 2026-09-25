@@ -1,6 +1,6 @@
 "use server";
 import { z } from "zod";
-import { AUTOMATION_MODES, BENEFIT_STATUSES, PROCESS_LEVELS, ROLES, type AppSettings, type Measurement } from "@/lib/domain/types";
+import { AUTOMATION_MODES, BENEFIT_STATUSES, PROCESS_LEVELS, type AppSettings, type Measurement } from "@/lib/domain/types";
 import { BenchmarkUploadSchema, MeasurementRowSchema, ModelPriceSchema } from "@/lib/domain/schemas";
 import { auditEntry, diffAudit, mutate } from "@/lib/services/mutation";
 
@@ -45,7 +45,7 @@ export async function saveSettingsAction(input: unknown) {
 }
 
 const GovernanceSchema = z.array(
-  z.object({ from: z.enum(BENEFIT_STATUSES), to: z.enum(BENEFIT_STATUSES), allowedRoles: z.array(z.enum(ROLES)).min(1), label: z.string().min(3), requiresEvidence: z.boolean() }),
+  z.object({ from: z.enum(BENEFIT_STATUSES), to: z.enum(BENEFIT_STATUSES), allowedRoles: z.array(z.string().min(1)).min(1), label: z.string().min(3), requiresEvidence: z.boolean() }),
 );
 export async function saveGovernanceAction(input: unknown) {
   return mutate("settings:edit", async (repo, s) => {

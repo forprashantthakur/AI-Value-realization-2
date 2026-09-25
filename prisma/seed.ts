@@ -1,8 +1,6 @@
 /* Seeds PostgreSQL with the FICTIONAL demo portfolio. Run: npm run db:seed */
 import { buildDemoPortfolio } from "../src/demo";
 import { PrismaRepository, prisma } from "../src/lib/data/prisma-repository";
-import { ROLE_PERMISSIONS, ROLE_LABEL } from "../src/lib/auth/rbac";
-import { ROLES } from "../src/lib/domain/types";
 
 
 async function main() {
@@ -33,7 +31,7 @@ async function main() {
   for (const k of p.kpis) await repo.upsertKpi(k);
   for (const m of p.modelPrices) await repo.upsertModelPrice(m);
   for (const b of p.benchmarks) await repo.upsertBenchmark(b);
-  await prisma.role.createMany({ data: ROLES.map((r) => ({ id: r, name: ROLE_LABEL[r], permissions: ROLE_PERMISSIONS[r] })) });
+  await prisma.role.createMany({ data: p.roles.map((r) => ({ id: r.id, name: r.name, description: r.description, permissions: r.permissions, builtIn: r.builtIn })) });
   await prisma.user.createMany({ data: p.users.map((u) => ({ id: u.id, name: u.name, email: u.email, title: u.title, roleId: u.role, organizationId: u.organizationId })) });
   await prisma.governanceStep.createMany({
     data: p.settings.governance.map((g, i) => ({ from: g.from, to: g.to, allowedRoles: g.allowedRoles, label: g.label, requiresEvidence: g.requiresEvidence, sortOrder: i })),

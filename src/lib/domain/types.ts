@@ -150,7 +150,18 @@ export const ROLES = [
   "CONSULTANT",
   "VIEWER",
 ] as const;
-export type Role = (typeof ROLES)[number];
+/** The eight roles that ship with the platform. Administrators can add custom roles at runtime. */
+export type BuiltInRole = (typeof ROLES)[number];
+/** Role identifier: a built-in role or an administrator-defined custom role (e.g. "CUSTOM_RISK_OFFICER"). */
+export type Role = BuiltInRole | (string & {});
+
+export interface RoleDefinition {
+  id: Role;
+  name: string;
+  description: string;
+  permissions: string[];
+  builtIn: boolean;
+}
 
 export const TIME_UNITS = ["SECONDS", "MINUTES", "HOURS", "DAYS"] as const;
 export type TimeUnit = (typeof TIME_UNITS)[number];
@@ -623,6 +634,7 @@ export interface Portfolio {
   benchmarks: Benchmark[];
   maturity: MaturityAssessment[];
   users: User[];
+  roles: RoleDefinition[];
   settings: AppSettings;
   audit: AuditEntry[];
 }

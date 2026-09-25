@@ -14,6 +14,8 @@ import type {
   ModelPrice,
   Portfolio,
   ProcessNode,
+  Role,
+  RoleDefinition,
   Scenario,
   SnapshotKind,
 } from "../domain/types";
@@ -62,6 +64,11 @@ export interface ValueRepository {
   upsertKpi(k: KpiDefinition): Promise<void>;
   upsertProcess(p: ProcessNode): Promise<void>;
   appendAudit(entries: AuditEntry[]): Promise<void>;
+  /** Create or update a role definition (name, description, permissions). */
+  upsertRole(role: RoleDefinition): Promise<void>;
+  /** Delete a custom role; users holding it are moved to `reassignTo` in the same operation. */
+  deleteRole(roleId: Role, reassignTo: Role): Promise<void>;
+  setUserRole(userId: string, role: Role): Promise<void>;
 }
 
 export type { SnapshotKind };

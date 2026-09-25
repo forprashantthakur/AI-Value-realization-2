@@ -5,6 +5,7 @@ import type { BenefitStatus, Initiative, LifecycleStage, Portfolio, ScenarioName
 import { BENEFIT_STATUSES, LIFECYCLE_STAGES } from "../domain/types";
 import { defaultScenario, evaluateInitiative, summarizePortfolio, type EvaluatedInitiative, type PortfolioSummary } from "../value-engine";
 import { setCurrency } from "../format";
+import { setRoleRegistry } from "../auth/rbac";
 
 export interface Filters {
   org?: string;
@@ -57,6 +58,7 @@ export const loadPortfolio = cache(async (): Promise<Portfolio> => {
   const repo = await getRepository();
   const p = await repo.loadPortfolio();
   setCurrency(p.settings.reportingCurrency);
+  setRoleRegistry(p.roles);
   return p;
 });
 
